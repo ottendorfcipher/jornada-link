@@ -59,7 +59,7 @@ if nc -z 127.0.0.1 "$DCCM_PORT" 2>/dev/null; then
   echo "jornada-ppp: a dccm listener is already on port $DCCM_PORT — reusing it"
 else
   sudo -u "$RUN_AS" mkdir -p "$USER_HOME/.jornada-link"
-  sudo -u "$RUN_AS" env JORNADA_PASSWORD="${JORNADA_PASSWORD:-}" \
+  sudo -u "$RUN_AS" env HOME="$USER_HOME" JORNADA_PASSWORD="${JORNADA_PASSWORD:-}" \
     sh -c "exec '$HERE/bin/jornada' dccm >> '$DCCM_LOG' 2>&1" &
   DCCM_PID=$!
   echo "jornada-ppp: started dccm listener (pid $DCCM_PID, log: $DCCM_LOG)"
