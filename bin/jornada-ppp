@@ -1,0 +1,77 @@
+#!/bin/sh
+# Bring up the link to a Windows CE 2.x device over a USB-serial adapter.
+#
+#   sudo bin/jornada-ppp [serial-device] [baud]
+#
+# 1. starts the dccm listener (as the invoking user, port 5679) unless one is
+#    already running — the device needs it to keep the connection up;
+# 2. runs pppd as root: waits for the device's "CLIENT", answers
+#    "CLIENTSERVER", then negotiates PPP with the Mac as 192.168.131.102 and the
+#    device as 192.168.131.201. `persist` keeps waiting for the next connection
+#    after the device hangs up; Ctrl-C stops everything.
+#
+# Extra pppd options can be appended with PPP_EXTRA="..." in the environment.
+set -eu
+
+LOCAL_IP=192.168.131.102
+REMOTE_IP=192.168.131.201
+DEFAULT_BAUD=19200          # the Jornada's factory "PC Connection" rate
+CHAT_TIMEOUT=3600           # seconds to wait for CLIENT before retrying
+DCCM_PORT=5679
+
+HERE=$(cd "$(dirname "$0")/.." && pwd)
+
+if [ "$(id -u)" -ne 0 ]; then
+  echo "jornada-ppp: must run as root:  sudo $0 $*" >&2
+  exit 1
+fi
+
+DEVICE=${1:-}
+if [ -z "$DEVICE" ]; then
+  DEVICE=$(ls /dev/cu.usbserial-* 2>/dev/null | head -n 1 || true)
+fi
+if [ -z "$DEVICE" ] || [ ! -c "$DEVICE" ]; then
+  echo "jornada-ppp: no USB serial device found (pass it explicitly, e.g. /dev/cu.usbserial-XXXX)" >&2
+  exit 1
+fi
+BAUD=${2:-$DEFAULT_BAUD}
+case "$BAUD" in 9600|19200|38400|57600|115200) ;; *) echo "jornada-ppp: unsupported baud $BAUD" >&2; exit 1;; esac
+
+# Apple's pppd refuses to start unless this file exists (it may be empty).
+if [ ! -f /etc/ppp/options ]; then
+  mkdir -p /etc/ppp
+  : > /etc/ppp/options
+  echo "jornada-ppp: created empty /etc/ppp/options (required by pppd)"
+fi
+
+# --- dccm listener, running as the real user -------------------------------
+RUN_AS=${SUDO_USER:-$(id -un)}
+USER_HOME=$(dscl . -read "/Users/$RUN_AS" NFSHomeDirectory 2>/dev/null | awk '{print $2}')
+USER_HOME=${USER_HOME:-/tmp}
+DCCM_LOG="$USER_HOME/.jornada-link/dccm.log"
+DCCM_PID=""
+if nc -z 127.0.0.1 "$DCCM_PORT" 2>/dev/null; then
+  echo "jornada-ppp: a dccm listener is already on port $DCCM_PORT — reusing it"
+else
+  sudo -u "$RUN_AS" mkdir -p "$USER_HOME/.jornada-link"
+  sudo -u "$RUN_AS" sh -c "exec '$HERE/bin/jornada' dccm >> '$DCCM_LOG' 2>&1" &
+  DCCM_PID=$!
+  echo "jornada-ppp: started dccm listener (pid $DCCM_PID, log: $DCCM_LOG)"
+fi
+cleanup() {
+  if [ -n "$DCCM_PID" ]; then
+    kill "$DCCM_PID" 2>/dev/null || true
+  fi
+}
+trap cleanup EXIT INT TERM
+
+echo "jornada-ppp: $DEVICE @ $BAUD, Mac=$LOCAL_IP device=$REMOTE_IP"
+echo "jornada-ppp: waiting for the device — start PC Link (Start > Programs > Communication > PC Link) on the Jornada"
+
+/usr/sbin/pppd "$DEVICE" "$BAUD" \
+  "$LOCAL_IP:$REMOTE_IP" ms-dns "$LOCAL_IP" \
+  nodetach local noauth nodefaultroute nocrtscts \
+  persist holdoff 2 maxfail 0 \
+  debug \
+  connect "/usr/sbin/chat -v -s -t $CHAT_TIMEOUT CLIENT 'CLIENTSERVER\\c'" \
+  ${PPP_EXTRA:-}

@@ -1,0 +1,4 @@
+#!/bin/sh
+# Thin launcher so the CLI works from any directory.
+HERE=$(cd "$(dirname "$0")/.." && pwd)
+exec env PYTHONPATH="$HERE${PYTHONPATH:+:$PYTHONPATH}" python3 -m jornada.cli "$@"
