@@ -21,9 +21,14 @@ Jornada 680e ──HP serial sync cable──► FTDI FT232R ──USB──► 
    sudo ~/Desktop/jornada-link/bin/jornada-ppp
    ```
 
-   It auto-picks `/dev/cu.usbserial-*` and uses 19200 baud (the Jornada's
-   factory "PC Connection" rate). Explicit form:
+   Port selection: argument › `$JORNADA_SERIAL` › `~/.jornada-link/serial` ›
+   first `/dev/cu.usbserial-*`. Baud defaults to 19200 (the Jornada's factory
+   "PC Connection" rate). Explicit form:
    `sudo bin/jornada-ppp /dev/cu.usbserial-BG00T191 19200`.
+
+   Note: on this Mac the FT232R shows up twice — `/dev/cu.usbserial-BG00T191`
+   (FTDI's VCP driver) and `/dev/cu.usbserial-3` (Apple's AppleUSBFTDI). Both
+   work; `~/.jornada-link/serial` pins the first. Never open both at once.
 
 2. **On the Jornada:** Start ▸ Programs ▸ Communication ▸ **PC Link**
    (or double-click a *Direct Connection* in Remote Networking). The Mac side

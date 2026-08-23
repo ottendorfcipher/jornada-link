@@ -27,7 +27,14 @@ if [ "$(id -u)" -ne 0 ]; then
   exit 1
 fi
 
-DEVICE=${1:-}
+# Serial port: argument > $JORNADA_SERIAL > ~/.jornada-link/serial > first /dev/cu.usbserial-*
+RUN_AS=${SUDO_USER:-$(id -un)}
+USER_HOME=$(dscl . -read "/Users/$RUN_AS" NFSHomeDirectory 2>/dev/null | awk '{print $2}')
+USER_HOME=${USER_HOME:-/tmp}
+DEVICE=${1:-${JORNADA_SERIAL:-}}
+if [ -z "$DEVICE" ] && [ -r "$USER_HOME/.jornada-link/serial" ]; then
+  DEVICE=$(head -n 1 "$USER_HOME/.jornada-link/serial")
+fi
 if [ -z "$DEVICE" ]; then
   DEVICE=$(ls /dev/cu.usbserial-* 2>/dev/null | head -n 1 || true)
 fi
@@ -46,9 +53,6 @@ if [ ! -f /etc/ppp/options ]; then
 fi
 
 # --- dccm listener, running as the real user -------------------------------
-RUN_AS=${SUDO_USER:-$(id -un)}
-USER_HOME=$(dscl . -read "/Users/$RUN_AS" NFSHomeDirectory 2>/dev/null | awk '{print $2}')
-USER_HOME=${USER_HOME:-/tmp}
 DCCM_LOG="$USER_HOME/.jornada-link/dccm.log"
 DCCM_PID=""
 if nc -z 127.0.0.1 "$DCCM_PORT" 2>/dev/null; then
