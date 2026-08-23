@@ -54,10 +54,10 @@ Jornada 680e ──HP serial sync cable──► FTDI FT232R ──USB──► 
 
 ### Device password
 
-If the Jornada has a power-on password, both halves need it:
-`JORNADA_PASSWORD` is not read automatically — pass `--password` to
-`bin/jornada dccm --password ...` (run it yourself before `jornada-ppp`, which
-then reuses it) and to every `bin/jornada <cmd> --password ...`.
+If the Jornada has a power-on password, both halves need it. Export
+`JORNADA_PASSWORD=...` and run `sudo -E bin/jornada-ppp` (the wrapper hands it
+to the dccm listener); the CLI commands read the same variable, or take
+`--password`.
 
 ## Plan B: plain HTTP (device ▸ Mac downloads only)
 

@@ -10,7 +10,8 @@
 #    device as 192.168.131.201. `persist` keeps waiting for the next connection
 #    after the device hangs up; Ctrl-C stops everything.
 #
-# Extra pppd options can be appended with PPP_EXTRA="..." in the environment.
+# Extra pppd options can be appended with PPP_EXTRA="..." in the environment;
+# a device password is passed to dccm via JORNADA_PASSWORD (use `sudo -E`).
 set -eu
 
 LOCAL_IP=192.168.131.102
@@ -54,7 +55,8 @@ if nc -z 127.0.0.1 "$DCCM_PORT" 2>/dev/null; then
   echo "jornada-ppp: a dccm listener is already on port $DCCM_PORT — reusing it"
 else
   sudo -u "$RUN_AS" mkdir -p "$USER_HOME/.jornada-link"
-  sudo -u "$RUN_AS" sh -c "exec '$HERE/bin/jornada' dccm >> '$DCCM_LOG' 2>&1" &
+  sudo -u "$RUN_AS" env JORNADA_PASSWORD="${JORNADA_PASSWORD:-}" \
+    sh -c "exec '$HERE/bin/jornada' dccm >> '$DCCM_LOG' 2>&1" &
   DCCM_PID=$!
   echo "jornada-ppp: started dccm listener (pid $DCCM_PID, log: $DCCM_LOG)"
 fi

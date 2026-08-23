@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 import logging
+import os
 import sys
 import time
 from pathlib import Path
@@ -175,7 +176,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="jornada", description="Talk to an HP Jornada / Windows CE 2.x over serial PPP")
     parser.add_argument("--version", action="version", version=f"jornada-link {__version__}")
     parser.add_argument("--ip", help="device IP (default: from the dccm session, else 192.168.131.201)")
-    parser.add_argument("--password", help="device password, if one is set on the Jornada")
+    parser.add_argument("--password", default=os.environ.get("JORNADA_PASSWORD") or None,
+                        help="device password, if one is set on the Jornada (or set JORNADA_PASSWORD)")
     parser.add_argument("--rapi-port", type=int, default=RAPI_PORT, help=argparse.SUPPRESS)
     parser.add_argument("-v", "--verbose", action="store_true")
     sub = parser.add_subparsers(dest="command", required=True)
