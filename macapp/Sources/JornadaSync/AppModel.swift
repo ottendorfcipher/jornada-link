@@ -53,7 +53,7 @@ final class AppModel: ObservableObject {
     let rapi = RapiService()
     private var listener: DccmListener?
     private var pollTimer: Timer?
-    private var wrapperLaunched = false
+    private var pollCount = 0
 
     // Lifecycle ---------------------------------------------------------------
     func start() {
@@ -110,17 +110,27 @@ final class AppModel: ObservableObject {
     }
 
     private func pollLinkState() {
+        pollCount += 1
         let up = PppController.linkIsUp()
+        let engine = PppController.engineRunning()
         if device != nil {
             phase = .connected
         } else if up {
             phase = .pppUp
-        } else if wrapperLaunched {
+        } else if engine {
             phase = .waitingForDevice
         } else {
             phase = .down
         }
-        if companionMode { readCompanionState() }
+        if companionMode {
+            readCompanionState()
+            // The CLI listener may have gone away; try to take over port 5679.
+            if pollCount % 5 == 0 && device == nil {
+                listener?.stop()
+                listener = nil
+                startListener()
+            }
+        }
     }
 
     private func readCompanionState() {
@@ -153,8 +163,7 @@ final class AppModel: ObservableObject {
         Task {
             do {
                 try await Task.detached { try PppController.startLink() }.value
-                wrapperLaunched = true
-                log("PPP wrapper started — now tap PC Link on the Jornada")
+                log("PPP engine started (device \(PppController.serialDevice() ?? "?") @ \(PppController.baud())) — now tap PC Link on the Jornada")
                 pollLinkState()
             } catch {
                 lastError = "\(error)"
@@ -167,7 +176,6 @@ final class AppModel: ObservableObject {
         Task {
             do {
                 try await Task.detached { try PppController.stopLink() }.value
-                wrapperLaunched = false
                 log("PPP link stopped")
                 device = nil
                 rapi.disconnect()

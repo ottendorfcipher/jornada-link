@@ -52,7 +52,7 @@ BAUD=${BAUD:-$DEFAULT_BAUD}
 # Kill stale copies of this wrapper first (their shells must not outlive us:
 # a dead-but-waiting sh would resume reading this script file after its pppd
 # exits). SIGKILL so no deferred traps run; skip ourselves and our sudo parent.
-for pid in $(pgrep -f "bin/jornada[-]ppp" 2>/dev/null || true); do
+for pid in $(pgrep -f "^(/bin/sh |sh |sudo ).*bin/jornada[-]ppp" 2>/dev/null || true); do
   [ "$pid" = "$$" ] && continue
   [ "$pid" = "$PPID" ] && continue
   echo "jornada-ppp: removing stale jornada-ppp process $pid"

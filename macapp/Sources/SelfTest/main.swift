@@ -95,6 +95,10 @@ case "dccm":
     Thread.sleep(forTimeInterval: 0.3)
     listener.stop()
 
+case "runner":
+    let path = try PppController.writeRunnerScript(device: "/dev/cu.usbserial-TEST", baud: 115200)
+    print(path)
+
 default:
     exit(2)
 }

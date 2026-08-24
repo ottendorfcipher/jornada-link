@@ -1,12 +1,35 @@
 import Foundation
 
-/// Controls the PPP side: detects the ppp interface and starts/stops the
-/// repo's `bin/jornada-ppp` wrapper via the system admin-authorization dialog.
+/// Controls the PPP side of the link.
+///
+/// Design constraints learned the hard way:
+///  - pppd must run as root; the app uses the system authorization dialog.
+///  - The privileged command must never reference files under ~/Desktop
+///    (iCloud + TCC make root access there unreliable): the app generates a
+///    runner script inside ~/.jornada-link and root executes only that.
+///  - Apple pppd's `persist` is broken (its `record` charshunt child keeps the
+///    port and the reopen loops on EBUSY), so the runner restarts a fresh
+///    pppd per connection instead.
 public enum PppController {
     public static let macIp = "192.168.131.102"
     public static let deviceIp = "192.168.131.201"
 
-    /// True when a pppN interface with an address exists.
+    public enum ControlError: Error, CustomStringConvertible {
+        case noSerialDevice
+        case authorizationFailed(String)
+
+        public var description: String {
+            switch self {
+            case .noSerialDevice:
+                return "no USB serial adapter found (/dev/cu.usbserial-*)"
+            case .authorizationFailed(let output):
+                return output.isEmpty ? "administrator authorization was cancelled" : output
+            }
+        }
+    }
+
+    // MARK: - State inspection
+
     public static func linkIsUp() -> Bool {
         var addresses: UnsafeMutablePointer<ifaddrs>?
         guard getifaddrs(&addresses) == 0 else { return false }
@@ -23,57 +46,114 @@ public enum PppController {
         return false
     }
 
+    /// True when a pppd for a usbserial device (or the runner loop) exists.
+    public static func engineRunning() -> Bool {
+        pgrep("pppd /dev/cu[.]usbserial") || pgrep("[.]jornada-link/run-ppp[.]sh")
+    }
+
+    private static func pgrep(_ pattern: String) -> Bool {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/pgrep")
+        process.arguments = ["-f", pattern]
+        process.standardOutput = Pipe()
+        process.standardError = Pipe()
+        guard (try? process.run()) != nil else { return false }
+        process.waitUntilExit()
+        return process.terminationStatus == 0
+    }
+
+    // MARK: - Configuration
+
     public static func stateDirectory() -> URL {
         FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".jornada-link")
     }
 
-    /// Locate bin/jornada-ppp: env override, then the repo next to the app
-    /// bundle, then the default Desktop checkout.
-    public static func wrapperPath() -> String? {
-        let candidates: [String?] = [
-            ProcessInfo.processInfo.environment["JORNADA_PPP_WRAPPER"],
-            Bundle.main.bundleURL
-                .deletingLastPathComponent()   // dist/
-                .deletingLastPathComponent()   // macapp/
-                .deletingLastPathComponent()   // repo root
-                .appendingPathComponent("bin/jornada-ppp").path,
-            (NSHomeDirectory() as NSString).appendingPathComponent("Desktop/jornada-link/bin/jornada-ppp"),
-        ]
-        for candidate in candidates {
-            if let candidate, FileManager.default.isExecutableFile(atPath: candidate) {
-                return candidate
-            }
+    public static func serialDevice() -> String? {
+        let pinned = stateDirectory().appendingPathComponent("serial")
+        if let text = try? String(contentsOf: pinned, encoding: .utf8) {
+            let path = text.trimmingCharacters(in: .whitespacesAndNewlines)
+            if FileManager.default.fileExists(atPath: path) { return path }
         }
-        return nil
+        let nodes = (try? FileManager.default.contentsOfDirectory(atPath: "/dev")) ?? []
+        return nodes.filter { $0.hasPrefix("cu.usbserial-") }.sorted().first.map { "/dev/" + $0 }
     }
 
-    public enum ControlError: Error, CustomStringConvertible {
-        case wrapperMissing
-        case authorizationFailed(String)
-
-        public var description: String {
-            switch self {
-            case .wrapperMissing:
-                return "bin/jornada-ppp not found — set JORNADA_PPP_WRAPPER or keep the app inside the jornada-link repo"
-            case .authorizationFailed(let output):
-                return output.isEmpty ? "administrator authorization was cancelled" : output
-            }
+    public static func baud() -> Int {
+        let stored = stateDirectory().appendingPathComponent("baud")
+        if let text = try? String(contentsOf: stored, encoding: .utf8),
+           let value = Int(text.trimmingCharacters(in: .whitespacesAndNewlines)),
+           [9600, 19200, 38400, 57600, 115200].contains(value) {
+            return value
         }
+        return 115200
     }
 
-    /// Start the wrapper as root (system authorization dialog). The app's own
-    /// dccm listener must already be running so the wrapper reuses it.
-    public static func startLink() throws {
-        guard let wrapper = wrapperPath() else { throw ControlError.wrapperMissing }
+    /// Drop stale buffered bytes (an old CLIENT) before pppd opens the port.
+    /// Needs no root: the serial nodes are mode 666.
+    public static func flushSerial() {
+        guard let device = serialDevice() else { return }
+        let fd = open(device, O_RDWR | O_NOCTTY | O_NONBLOCK)
+        guard fd >= 0 else { return }
+        tcflush(fd, TCIOFLUSH)
+        close(fd)
+    }
+
+    // MARK: - Start / stop
+
+    /// Write the root runner script into ~/.jornada-link (plain-ASCII paths,
+    /// no Desktop involvement) and return its path.
+    public static func writeRunnerScript(device: String, baud: Int) throws -> String {
+        let directory = stateDirectory()
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let log = directory.appendingPathComponent("ppp.log").path
+        let record = directory.appendingPathComponent("ppp.record").path
         let user = NSUserName()
-        let log = stateDirectory().appendingPathComponent("ppp-wrapper.log").path
-        let shell = "nohup env JORNADA_RUN_AS='\(user)' '\(wrapper)' >'\(log)' 2>&1 & echo ok"
-        try runPrivileged(shell, prompt: "Jornada Sync needs administrator access to start the serial PPP link (pppd).")
+        let script = """
+        #!/bin/sh
+        # Generated by Jornada Sync (\(Date())). Runs as root. Safe to delete.
+        LOG='\(log)'
+        REC='\(record)'
+        pkill -f 'pppd /dev/cu[.]usbserial' 2>/dev/null || true
+        sleep 1
+        [ -f /etc/ppp/options ] || { mkdir -p /etc/ppp; : > /etc/ppp/options; }
+        : > "$REC"
+        touch "$LOG"
+        chown '\(user)' "$REC" "$LOG" 2>/dev/null || true
+        echo "=== Jornada Sync ppp loop started $(date) dev=\(device) baud=\(baud) ===" >> "$LOG"
+        while :; do
+          /usr/sbin/pppd '\(device)' \(baud) \
+            \(macIp):\(deviceIp) ms-dns \(macIp) \
+            nodetach local noauth nodefaultroute nocrtscts \
+            ipcp-restart 10 noacsp debug \
+            logfile "$LOG" record "$REC" \
+            connect "/usr/sbin/chat -v -s -t 3600 CLIENT 'CLIENTSERVER\\\\c' 2>>$LOG" || true
+          echo "=== pppd exited $(date); retrying ===" >> "$LOG"
+          sleep 2
+        done
+
+        """
+        let path = directory.appendingPathComponent("run-ppp.sh").path
+        try script.write(toFile: path, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: path)
+        return path
+    }
+
+    public static func startLink() throws {
+        guard let device = serialDevice() else { throw ControlError.noSerialDevice }
+        flushSerial()
+        let runner = try writeRunnerScript(device: device, baud: baud())
+        let launcherLog = stateDirectory().appendingPathComponent("ppp-wrapper.log").path
+        let shell = "/bin/sh '\(runner)' >>'\(launcherLog)' 2>&1 & echo ok"
+        try runPrivileged(shell,
+                          prompt: "Jornada Sync needs administrator access to start the serial PPP link (pppd requires root).")
     }
 
     public static func stopLink() throws {
-        let shell = "pkill -f 'bin/jornada[-]ppp' ; pkill -f 'pppd /dev/cu[.]usbserial' ; echo ok"
-        try runPrivileged(shell, prompt: "Jornada Sync needs administrator access to stop the serial PPP link.")
+        let shell = "pkill -f '[.]jornada-link/run-ppp[.]sh' ; " +
+            "pkill -f '^(/bin/sh |sh |sudo ).*bin/jornada[-]ppp' ; sleep 1 ; " +
+            "pkill -f 'pppd /dev/cu[.]usbserial' ; echo ok"
+        try runPrivileged(shell,
+                          prompt: "Jornada Sync needs administrator access to stop the serial PPP link.")
     }
 
     private static func runPrivileged(_ shell: String, prompt: String) throws {
