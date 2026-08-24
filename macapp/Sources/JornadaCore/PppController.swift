@@ -127,7 +127,7 @@ public enum PppController {
         while :; do
           /usr/sbin/pppd '\(device)' \(baud) \
             \(macIp):\(deviceIp) ms-dns \(macIp) \
-            nodetach local noauth nodefaultroute nocrtscts \
+            nodetach local noauth nodefaultroute nocrtscts novj \
             ipcp-restart 10 noacsp debug \
             lcp-echo-interval 9 lcp-echo-failure 5 \
             logfile "$LOG" record "$REC" \

@@ -38,17 +38,38 @@ public final class TcpSocket {
             throw SocketError.system("inet_pton \(host)", EINVAL)
         }
         setTimeout(socketFd, timeoutSeconds)
+        // Non-blocking connect with an explicit deadline: SO_SNDTIMEO does not
+        // bound connect() on Darwin (the OS default is ~75s, which made a dead
+        // RAPI port feel like a frozen app).
+        let connectDeadline = min(timeoutSeconds, 10.0)
+        let originalFlags = fcntl(socketFd, F_GETFL, 0)
+        _ = fcntl(socketFd, F_SETFL, originalFlags | O_NONBLOCK)
         let result = withUnsafePointer(to: &address) { pointer in
             pointer.withMemoryRebound(to: sockaddr.self, capacity: 1) {
                 Darwin.connect(socketFd, $0, socklen_t(MemoryLayout<sockaddr_in>.size))
             }
         }
-        guard result == 0 else {
-            let savedErrno = errno
-            Darwin.close(socketFd)
-            if savedErrno == ETIMEDOUT { throw SocketError.timeout("connect \(host):\(port)") }
-            throw SocketError.system("connect \(host):\(port)", savedErrno)
+        if result != 0 {
+            guard errno == EINPROGRESS else {
+                let savedErrno = errno
+                Darwin.close(socketFd)
+                throw SocketError.system("connect \(host):\(port)", savedErrno)
+            }
+            var descriptor = pollfd(fd: socketFd, events: Int16(POLLOUT), revents: 0)
+            let ready = poll(&descriptor, 1, Int32(connectDeadline * 1000))
+            guard ready == 1 else {
+                Darwin.close(socketFd)
+                throw SocketError.timeout("connect \(host):\(port)")
+            }
+            var soError: Int32 = 0
+            var soLength = socklen_t(MemoryLayout<Int32>.size)
+            getsockopt(socketFd, SOL_SOCKET, SO_ERROR, &soError, &soLength)
+            guard soError == 0 else {
+                Darwin.close(socketFd)
+                throw SocketError.system("connect \(host):\(port)", soError)
+            }
         }
+        _ = fcntl(socketFd, F_SETFL, originalFlags)
         var one: Int32 = 1
         setsockopt(socketFd, IPPROTO_TCP, TCP_NODELAY, &one, socklen_t(MemoryLayout<Int32>.size))
         fd = socketFd

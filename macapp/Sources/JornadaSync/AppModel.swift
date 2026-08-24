@@ -186,6 +186,18 @@ final class AppModel: ObservableObject {
         }
     }
 
+    private func explainRapiFailure(_ error: Error, context: String) {
+        let text = "\(error)"
+        if text.contains("timed out") || text.contains("timeout") {
+            lastError = "The Jornada's file service (RAPI, port 990) is not answering. " +
+                "Disconnect PC Link on the device and tap it again; if it still fails, " +
+                "soft-reset the Jornada (recessed Reset button) and re-tap PC Link."
+        } else {
+            lastError = text
+        }
+        log("\(context) failed: \(text)")
+    }
+
     // Device info -------------------------------------------------------------
     func refreshDeviceInfo() async {
         do {
@@ -205,8 +217,7 @@ final class AppModel: ObservableObject {
                 batteryText = onACPower ? "on AC power" : "unknown"
             }
         } catch {
-            lastError = "\(error)"
-            log("device info failed: \(error)")
+            explainRapiFailure(error, context: "device info")
         }
     }
 
@@ -223,8 +234,7 @@ final class AppModel: ObservableObject {
             }
             lastError = nil
         } catch {
-            lastError = "\(error)"
-            log("list \(path) failed: \(error)")
+            explainRapiFailure(error, context: "list \(path)")
         }
     }
 

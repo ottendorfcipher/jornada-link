@@ -147,7 +147,7 @@ os.close(fd)
 PYEOF
   /usr/sbin/pppd "$DEVICE" "$BAUD" \
     "$LOCAL_IP:$REMOTE_IP" ms-dns "$LOCAL_IP" \
-    nodetach local noauth nodefaultroute nocrtscts \
+    nodetach local noauth nodefaultroute nocrtscts novj \
     ipcp-restart 10 noacsp \
     lcp-echo-interval 9 lcp-echo-failure 5 \
     debug \
