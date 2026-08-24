@@ -87,6 +87,10 @@ Jornada. Useful if RAPI misbehaves; it cannot copy files *from* the device.
   or PC Link wasn't started on the device *after* `jornada-ppp`.
 * The device drops after ~15 s: dccm wasn't listening (it must answer the
   device's info packet with `0x12345678`).
+* `Failed to acquire /dev/cu.usbserial-… : Resource busy`: an earlier run
+  still holds the port (e.g. its terminal was closed and the persistent pppd
+  survived). Just re-run `sudo bin/jornada-ppp` — it kills stale wrapper/pppd
+  processes and reclaims the port before starting.
 * Apple's `pppd` insists that `/etc/ppp/options` exists; the wrapper creates
   an empty one.
 * Extra pppd options: `PPP_EXTRA="lcp-echo-interval 10 lcp-echo-failure 6" sudo -E bin/jornada-ppp`.

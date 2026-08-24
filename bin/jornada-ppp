@@ -44,8 +44,18 @@ if [ -z "$DEVICE" ] || [ ! -c "$DEVICE" ]; then
 fi
 BAUD=${2:-$DEFAULT_BAUD}
 
-# Reclaim the port: an earlier jornada-ppp (e.g. orphaned when its terminal
-# closed) may still hold the device; we are root, so stop it first.
+# Kill stale copies of this wrapper first (their shells must not outlive us:
+# a dead-but-waiting sh would resume reading this script file after its pppd
+# exits). SIGKILL so no deferred traps run; skip ourselves and our sudo parent.
+for pid in $(pgrep -f "bin/jornada[-]ppp" 2>/dev/null || true); do
+  [ "$pid" = "$$" ] && continue
+  [ "$pid" = "$PPID" ] && continue
+  echo "jornada-ppp: removing stale jornada-ppp process $pid"
+  kill -9 "$pid" 2>/dev/null || true
+done
+
+# Reclaim the port: an earlier pppd (e.g. orphaned when its terminal closed)
+# may still hold the device; we are root, so stop it first.
 if pgrep -f "pppd $DEVICE" >/dev/null 2>&1; then
   echo "jornada-ppp: stopping an earlier pppd holding $DEVICE"
   pkill -f "pppd $DEVICE" 2>/dev/null || true
