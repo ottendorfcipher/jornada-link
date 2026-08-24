@@ -1,0 +1,33 @@
+# Normalize line endings: repo is LF, checked out native.
+* text=auto eol=lf
+
+# Explicit text types
+*.py    text diff=python
+*.swift text diff=swift
+*.md    text
+*.sh    text eol=lf
+*.txt   text
+*.toml  text
+*.yml   text
+*.yaml  text
+*.json  text
+
+# Shell scripts and the CLI launcher must stay LF even on Windows checkouts.
+bin/jornada      text eol=lf
+bin/jornada-ppp  text eol=lf
+macapp/build.sh  text eol=lf
+
+# Binary assets — never diff or line-ending-munge.
+*.png binary
+*.icns binary
+*.zip binary
+*.cab binary
+*.z3 binary
+*.z5 binary
+*.z8 binary
+
+# Keep test/dev noise out of release source archives (git archive).
+/.github        export-ignore
+/tests          export-ignore
+.gitattributes  export-ignore
+.gitignore      export-ignore

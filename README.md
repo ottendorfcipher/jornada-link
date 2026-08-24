@@ -1,161 +1,166 @@
 # jornada-link
 
-Talk to an **HP Jornada 680e** (Windows CE 2.11 / H/PC Pro) from macOS over a
-USB-serial (FTDI) cable: file listing, copy in both directions, delete/move/
-mkdir, launch programs, battery/storage status — with **nothing installed on
-the Jornada**. It speaks the device's own ActiveSync-era protocols (PPP over
-serial, then the "dccm" keep-alive on TCP 5679 and RAPI on TCP 990), ported
-to Python from the SynCE project's `dccm` and `librapi2` sources.
+[![CI](https://github.com/ottendorfcipher/jornada-link/actions/workflows/ci.yml/badge.svg)](https://github.com/ottendorfcipher/jornada-link/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-informational.svg)](LICENSE)
+[![Python 3.9+](https://img.shields.io/badge/python-3.9%2B-blue.svg)](https://www.python.org/)
+[![macOS 14+](https://img.shields.io/badge/macOS-14%2B-black.svg)](https://www.apple.com/macos/)
+
+Talk to a **vintage HP Jornada / Windows CE 2.x handheld** from a modern Mac
+over a USB-serial (FTDI) cable — list files, copy in both directions, make
+folders, launch programs, set the clock, back up the whole device — with
+**nothing installed on the handheld**. It speaks the device's own
+ActiveSync-era protocols directly: PPP over serial, the "dccm" connection
+notifier on TCP 5679, and the RAPI remote API on TCP 990.
+
+Two front ends, one protocol core:
+
+- **`jornada`** — a dependency-free Python CLI.
+- **Jornada Sync.app** — a native SwiftUI macOS app styled after Microsoft
+  ActiveSync (drag-and-drop file browser, device banner, transfers, logs).
 
 ```
-Jornada 680e ──HP serial sync cable──► FTDI FT232R ──USB──► Mac
-      \_ PPP 192.168.131.201 ◄──────────────────► 192.168.131.102 _/
+HP Jornada ──serial sync cable──► FTDI FT232R ──USB──► Mac
+   192.168.131.201  ◄──────────── PPP ────────────►  192.168.131.102
 ```
 
-## Quick start
+Developed and tested against an **HP Jornada 680e** (Windows CE 2.11 /
+H/PC Pro 3.0, Hitachi SH3). Other CE 2.x H/PC devices use the same protocols and
+should work; reports welcome.
 
-1. **Bring up the link** (needs root for `pppd`; also starts the dccm
-   listener as your user):
+> **Note** — this is an independent interoperability tool, not affiliated with HP
+> or Microsoft. It talks to hardware you already own. See [`NOTICE.md`](NOTICE.md).
 
-   ```bash
-   sudo ~/Desktop/jornada-link/bin/jornada-ppp
-   ```
+## Requirements
 
-   Port selection: argument › `$JORNADA_SERIAL` › `~/.jornada-link/serial` ›
-   first `/dev/cu.usbserial-*`. Baud defaults to 19200 (the Jornada's factory
-   "PC Connection" rate). Explicit form:
-   `sudo bin/jornada-ppp /dev/cu.usbserial-BG00T191 19200`.
+- A Mac (macOS 14+) with an FTDI USB-serial adapter and the appropriate HP
+  serial sync cable.
+- Python 3.9+ for the CLI (uses only the standard library).
+- Xcode 16 / Swift 6 toolchain to build the app (optional).
+- Administrator rights are needed **only** to start `pppd` (the PPP link).
 
-   Note: on this Mac the FT232R shows up twice — `/dev/cu.usbserial-BG00T191`
-   (FTDI's VCP driver) and `/dev/cu.usbserial-3` (Apple's AppleUSBFTDI). Both
-   work; `~/.jornada-link/serial` pins the first. Never open both at once.
-
-2. **On the Jornada:** Start ▸ Programs ▸ Communication ▸ **PC Link**
-   (or double-click a *Direct Connection* in Remote Networking). The Mac side
-   prints the `CLIENT`/`CLIENTSERVER` handshake, PPP negotiation, then the
-   dccm log shows `Talking to 'Jornada' ... RAPI available`.
-
-3. **Use it** (second terminal, no root):
-
-   ```bash
-   bin/jornada status                       # OS version, storage, battery
-   bin/jornada ls '\'                       # root of the object store
-   bin/jornada ls '\My Documents'
-   bin/jornada get '\My Documents\notes.pwd' ~/Desktop/notes.pwd
-   bin/jornada put ~/Desktop/photo.bmp '\My Documents\'
-   bin/jornada mkdir '\My Documents\Mac'
-   bin/jornada mv '\My Documents\a.txt' '\My Documents\Mac\a.txt'
-   bin/jornada rm '\My Documents\old.txt'
-   bin/jornada run '\Windows\pword.exe' '\My Documents\notes.pwd'
-   ```
-
-   Device paths use backslashes — single-quote them in the shell.
-
-### Faster transfers
-
-19200 baud is ~1.9 KB/s. On the Jornada open Control Panel ▸ Communications ▸
-**PC Connection** and pick *Serial Port @ 115200* (if offered), then run
-`sudo bin/jornada-ppp /dev/cu.usbserial-XXXX 115200`.
-
-### Device password
-
-If the Jornada has a power-on password, both halves need it. Export
-`JORNADA_PASSWORD=...` and run `sudo -E bin/jornada-ppp` (the wrapper hands it
-to the dccm listener); the CLI commands read the same variable, or take
-`--password`.
-
-## Plan B: plain HTTP (device ▸ Mac downloads only)
-
-Once PPP is up, any TCP works. Put files in `share/` and run
+## Quick start (CLI)
 
 ```bash
-python3 -m http.server --bind 192.168.131.102 8000 --directory share
+git clone https://github.com/ottendorfcipher/jornada-link.git
+cd jornada-link
 ```
 
-then open `http://192.168.131.102:8000/` in Pocket Internet Explorer on the
-Jornada. Useful if RAPI misbehaves; it cannot copy files *from* the device.
+1. **Bring up the serial PPP link** (needs `sudo`, since `pppd` creates the
+   network interface; this also starts the connection listener):
+
+   ```bash
+   sudo ./bin/jornada-ppp
+   ```
+
+   Serial port selection order: argument › `$JORNADA_SERIAL` ›
+   `~/.jornada-link/serial` › first `/dev/cu.usbserial-*`. Baud selection:
+   argument › `$JORNADA_BAUD` › `~/.jornada-link/baud` › `115200`. Explicit form:
+
+   ```bash
+   sudo ./bin/jornada-ppp /dev/cu.usbserial-XXXX 115200
+   ```
+
+2. **On the Jornada:** Start ▸ Programs ▸ Communication ▸ **PC Link** (set the
+   matching rate under Control Panel ▸ Communications ▸ PC Connection). You'll
+   see the `CLIENT`/`CLIENTSERVER` handshake, PPP negotiate, then the link
+   reports the device.
+
+3. **Use it** (a second terminal, no `sudo` needed):
+
+   ```bash
+   ./bin/jornada status                       # OS version, storage, battery
+   ./bin/jornada ls '\'                        # root of the object store
+   ./bin/jornada ls '\My Documents'
+   ./bin/jornada get '\My Documents\notes.pwd' ./notes.pwd
+   ./bin/jornada put ./photo.bmp '\My Documents\'
+   ./bin/jornada mkdir '\My Documents\Mac'
+   ./bin/jornada mv '\My Documents\a.txt' '\My Documents\Mac\a.txt'
+   ./bin/jornada rm '\My Documents\old.txt'
+   ./bin/jornada run '\Windows\pword.exe' '\My Documents\notes.pwd'
+   ./bin/jornada settime                       # set the device clock from the Mac
+   ./bin/jornada backup ./jornada-backup       # recursively copy the object store
+   ./bin/jornada install ./app-sh3.cab         # copy a CAB and launch its installer
+   ```
+
+   Device paths use backslashes — single-quote them in the shell. Transfers run
+   at roughly 2.5–9 KB/s over a 115200 line, so be patient with large files.
+
+### Command reference
+
+| Command | Does |
+|---|---|
+| `status` | OS version, object-store usage, battery/power |
+| `ls PATH` | List a device directory |
+| `get REMOTE [LOCAL]` | Copy a file device → Mac |
+| `put LOCAL [REMOTE]` | Copy a file Mac → device |
+| `rm` / `mkdir` / `rmdir` / `mv` | File management |
+| `run EXE [ARGS…]` | Launch a program on the device |
+| `settime` | Set the device clock from this Mac |
+| `shortcut LNK TARGET` | Create a `.lnk` on the device |
+| `backup DEST [PATH]` | Recursively mirror a device subtree + JSON manifest |
+| `install CAB` | Copy a `.cab` and launch the device installer (`wceload`) |
+| `probe DEVICE [BAUD] [SECONDS]` | Sniff the serial line (no root) |
+| `ppplog [FILE]` | Decode a `pppd` record file into readable PPP frames |
+
+## The macOS app
+
+```bash
+macapp/build.sh          # builds + signs "Jornada Sync.app" into ~/Applications
+```
+
+The app runs the protocol natively (Swift ports of the dccm listener and RAPI
+client — no Python at runtime). **Connect** starts the PPP link via the system
+administrator prompt; the Files pane supports drag-and-drop from Finder,
+download, rename/delete/new-folder, and Run-on-device for `.exe`s.
+
+## How it works
+
+- **Serial handshake.** The device repeats `CLIENT`; the host answers
+  `CLIENTSERVER` and starts PPP. The Mac is `192.168.131.102`, the device
+  `192.168.131.201`.
+- **dccm (TCP 5679, device → host).** The device announces itself (OS version,
+  build, name/class/hardware) and expects the host to answer its info packet
+  with the ping word `0x12345678` and keep pinging, or it drops the link.
+- **RAPI (TCP 990, host → device).** Length-prefixed `command + args` frames;
+  the client wraps the CE file, directory, process, and system calls.
+
+The wire format lives in one place per language — `jornada/wire.py` and
+`macapp/Sources/JornadaCore/Wire.swift` — and both are verified against the same
+in-memory fake device (`tests/fake_device.py`).
 
 ## Troubleshooting
 
-* `bin/jornada probe /dev/cu.usbserial-XXXX 19200 8` — sniff the line without
-  root. You should see `CLIENT` while PC Link is trying; at the wrong baud it
-  looks like `E0 00 E0 00 …`.
-* pppd prints LCP/IPCP negotiation (`debug`) to the terminal; the dccm
-  listener logs to `~/.jornada-link/dccm.log`; the live session is recorded in
-  `~/.jornada-link/connection.json`.
-* "cannot reach the Jornada's RAPI port": PPP isn't up, dccm isn't running,
-  or PC Link wasn't started on the device *after* `jornada-ppp`.
-* The device drops after ~15 s: dccm wasn't listening (it must answer the
-  device's info packet with `0x12345678`).
-* `Failed to acquire /dev/cu.usbserial-… : Resource busy`: an earlier run
-  still holds the port (e.g. its terminal was closed and the persistent pppd
-  survived). Just re-run `sudo bin/jornada-ppp` — it kills stale wrapper/pppd
-  processes and reclaims the port before starting.
-* Apple's `pppd` insists that `/etc/ppp/options` exists; the wrapper creates
-  an empty one.
-* Extra pppd options: `PPP_EXTRA="lcp-echo-interval 10 lcp-echo-failure 6" sudo -E bin/jornada-ppp`.
+- `./bin/jornada probe /dev/cu.usbserial-XXXX 115200 8` — sniff the line without
+  root; you should see `CLIENT` while PC Link is trying.
+- `pppd` logs to `~/.jornada-link/ppp.log`; raw serial traffic is recorded to
+  `~/.jornada-link/ppp.record` (`./bin/jornada ppplog` decodes it).
+- **"RAPI port not answering"**: the link is up but the device's file service
+  isn't responding — reconnect PC Link, or soft-reset the Jornada (recessed
+  Reset button; the object store survives) and reconnect.
+- The Jornada auto-suspends on battery after a few idle minutes; keep it on AC
+  for long sessions, and re-tap PC Link after it wakes.
 
-## Jornada Sync.app — the macOS GUI
+## Security
 
-`macapp/` holds a native SwiftUI app styled after Microsoft ActiveSync
-(emerald sync-ring branding, device banner with the green "connected" orb,
-a sync-items style Overview) with current macOS chrome. Build it with:
+The trust boundary is a physical point-to-point cable. The dccm listener only
+accepts the device's PPP peer IP, RAPI frames are size-capped, device-supplied
+names are neutralized before use as local paths, and the serial path is
+validated before it reaches the root `pppd` command. The vintage protocol has no
+transport encryption — treat the handheld as a trusted peer on a private cable,
+not the link as confidential. Full threat model and OWASP mapping in
+[`SECURITY.md`](SECURITY.md).
+
+## Contributing
+
+See [`CONTRIBUTING.md`](CONTRIBUTING.md) and [`AGENTS.md`](AGENTS.md). The whole
+test suite runs against a fake device, so **you don't need a Jornada to
+contribute**:
 
 ```bash
-~/Desktop/jornada-link/macapp/build.sh
+python3 -m pytest -q tests
 ```
 
-which produces `macapp/dist/Jornada Sync.app` (ad-hoc signed, custom .icns).
-The app speaks the protocols natively (Swift ports of the dccm listener and
-RAPI client — no Python at runtime):
+## License
 
-* **Connect** in the toolbar starts `bin/jornada-ppp` as root via the system
-  authorization dialog (pppd needs root); Disconnect stops it.
-* The app runs its own dccm listener on 5679; if the CLI's listener is already
-  running it follows `~/.jornada-link/connection.json` instead (companion mode).
-* Files pane: browse, drag-and-drop from Finder to upload, double-click or
-  context-menu Download…, rename/delete/new-folder, Run on Device for .exe.
-* Transfers pane shows progress/throughput; Log pane mirrors app + dccm events.
-* Protocol self-test against the Python fake device:
-  `python3 - <<'PY'` … start `tests/fake_device.FakeRapiServer` … then
-  `macapp/.build/debug/SelfTest rapi <port>` (11 checks) and
-  `SelfTest dccm <port>` against `FakeActiveSyncClient`.
-
-## Layout
-
-```
-bin/jornada         CLI launcher (dccm, status, ls, get, put, rm, mkdir, rmdir, mv, run, probe)
-bin/jornada-ppp     sudo wrapper: dccm listener + pppd + chat handshake
-jornada/wire.py     RAPI marshalling primitives
-jornada/transport.py  framed socket I/O
-jornada/dccm.py     port-5679 listener (device keep-alive / info packet / password)
-jornada/rapi.py     RAPI client: files, directories, processes, system info
-jornada/info.py     device info packet codec
-jornada/password.py password XOR/UTF-16 encoding
-jornada/state.py    connection.json helpers
-jornada/serial_probe.py  raw serial sniffer (termios, no pyserial)
-tests/              pytest suite incl. an in-memory fake Jornada (RAPI server + ActiveSync client)
-```
-
-Run the tests with `python3 -m pytest -q tests`.
-
-## Protocol notes (from SynCE)
-
-* Serial handshake: device repeats `CLIENT`; host answers `CLIENTSERVER`
-  (no CR) and starts PPP. pppd options: `<dev> <baud> 192.168.131.102:192.168.131.201
-  ms-dns 192.168.131.102 noauth local nodefaultroute` (SynCE adds `crtscts`;
-  the FTDI link here works without flow control).
-* dccm (TCP 5679, device→host): 4-byte LE header. `0` = empty, `0x12345678` =
-  ping reply, `< 512` = info packet of that length (OS version @4, build @6,
-  CPU @8, partner ids @0x10/0x14, UTF-16 string offsets @0x18/0x1C/0x20 for
-  name/class/hardware), otherwise a password challenge whose low byte is the
-  XOR key. Host answers the info packet with `0x12345678` and repeats it every
-  5 s; three unanswered pings = hang-up.
-* RAPI (TCP 990, host→device): `u32 length` + `u32 command` + args. Reply:
-  `u32 result_1` (1 ⇒ an HRESULT follows), `u32 last_error`, `u32 return`,
-  outputs. Strings are `1, nchars+1, UTF-16LE+NUL`; "optional" buffers are
-  `1, size, has_data, [data]`. Commands: FindAllFiles 0x09, CreateFile 0x05,
-  ReadFile 0x06, WriteFile 0x07, CloseHandle 0x08, CreateDirectory 0x17,
-  RemoveDirectory 0x18, CreateProcess 0x19, MoveFile 0x1A, DeleteFile 0x1C,
-  GetFileAttributes 0x03, GetStoreInformation 0x29, GetVersionEx 0x3B,
-  GetSystemPowerStatusEx 0x41.
+MIT — see [`LICENSE`](LICENSE). Protocol attribution and trademarks in
+[`NOTICE.md`](NOTICE.md).

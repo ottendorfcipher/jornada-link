@@ -1,8 +1,56 @@
+# ---- macOS ----
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+.Spotlight-V100
+.Trashes
+Icon?
+
+# ---- Python ----
 __pycache__/
-*.pyc
+*.py[cod]
+*$py.class
+.Python
+build/
+dist/
+*.egg-info/
+.eggs/
+.venv/
+venv/
+env/
 .pytest_cache/
+.mypy_cache/
+.ruff_cache/
 .coverage
-share/*
-!share/.gitkeep
+.coverage.*
+htmlcov/
+coverage.xml
+.tox/
+
+# ---- Swift / SwiftPM ----
 macapp/.build/
 macapp/dist/
+.swiftpm/
+*.xcodeproj/xcuserdata/
+DerivedData/
+Package.resolved
+
+# ---- Editors / tooling ----
+.idea/
+.vscode/
+*.swp
+*~
+
+# ---- Runtime state & captures (never commit device sessions) ----
+# The tool writes connection state, PPP logs, and raw serial recordings here at
+# runtime; these can contain device identifiers and file metadata.
+.jornada-link/
+*.record
+share/*
+!share/.gitkeep
+
+# ---- Local secrets / env ----
+.env
+.env.*
+*.local

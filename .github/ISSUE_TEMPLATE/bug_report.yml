@@ -1,0 +1,30 @@
+name: Bug report
+description: Something isn't working
+labels: ["bug"]
+body:
+  - type: input
+    id: device
+    attributes:
+      label: Device + CE version
+      placeholder: "HP Jornada 680e, Windows CE 2.11 (H/PC Pro 3.0)"
+  - type: input
+    id: host
+    attributes:
+      label: Mac + adapter
+      placeholder: "macOS 15.5 on M3, FTDI FT232R"
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What did you do, what did you expect, what happened instead?
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant logs
+      description: |
+        Output of the failing command, and if it's a link problem, the tail of
+        `~/.jornada-link/ppp.log`. Review before pasting — do not include
+        anything private.
+      render: text

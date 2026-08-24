@@ -1,0 +1,15 @@
+name: Feature request
+description: Suggest an idea (a RAPI command, a UI improvement, etc.)
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: idea
+    attributes:
+      label: What would you like?
+    validations:
+      required: true
+  - type: textarea
+    id: context
+    attributes:
+      label: Context
+      description: What are you trying to accomplish with your Jornada?

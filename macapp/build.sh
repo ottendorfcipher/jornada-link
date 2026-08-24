@@ -27,13 +27,13 @@ cat > "$APP/Contents/Info.plist" <<'PLIST'
 <plist version="1.0">
 <dict>
     <key>CFBundleExecutable</key><string>JornadaSync</string>
-    <key>CFBundleIdentifier</key><string>com.nicholasweiner.jornada-sync</string>
+    <key>CFBundleIdentifier</key><string>io.github.jornadalink.sync</string>
     <key>CFBundleName</key><string>Jornada Sync</string>
     <key>CFBundleDisplayName</key><string>Jornada Sync</string>
     <key>CFBundleIconFile</key><string>AppIcon</string>
     <key>CFBundlePackageType</key><string>APPL</string>
-    <key>CFBundleShortVersionString</key><string>1.0</string>
-    <key>CFBundleVersion</key><string>2</string>
+    <key>CFBundleShortVersionString</key><string>0.1.0</string>
+    <key>CFBundleVersion</key><string>3</string>
     <key>LSMinimumSystemVersion</key><string>14.0</string>
     <key>NSHumanReadableCopyright</key><string>Talks to an HP Jornada / Windows CE 2.x handheld over serial PPP.</string>
     <key>NSHighResolutionCapable</key><true/>
