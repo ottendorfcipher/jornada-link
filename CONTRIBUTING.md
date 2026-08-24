@@ -49,10 +49,8 @@ Cross-language protocol check — the Swift client is verified against the same
 Python fake device the unit tests use:
 
 ```bash
-# terminal 1: start the fake RAPI server, note the printed port
-python3 -c "import sys; sys.path.insert(0,'.'); \
-  from tests.fake_device import FakeRapiServer; s=FakeRapiServer().start(); \
-  print(s.port); import time; time.sleep(120)"
+# terminal 1: start a populated fake device, note the printed port
+python3 tests/serve_fake.py
 # terminal 2:
 macapp/.build/debug/SelfTest rapi <port>
 ```

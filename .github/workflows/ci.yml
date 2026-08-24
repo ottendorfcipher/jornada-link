@@ -39,9 +39,6 @@ jobs:
         run: swift build --product SelfTest
       - name: RAPI protocol self-test (Swift client vs Python fake device)
         run: |
-          python3 -c "import sys; sys.path.insert(0,'.'); \
-            from tests.fake_device import FakeRapiServer; \
-            s=FakeRapiServer().start(); open('/tmp/port','w').write(str(s.port)); \
-            import time; time.sleep(60)" &
+          python3 tests/serve_fake.py 60 > /tmp/port &
           sleep 3
           macapp/.build/debug/SelfTest rapi "$(cat /tmp/port)"
