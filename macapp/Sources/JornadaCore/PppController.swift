@@ -118,7 +118,15 @@ public enum PppController {
           kill -9 "$pid" 2>/dev/null || true
         done
         pkill -f 'pppd /dev/cu[.]usbserial' 2>/dev/null || true
-        sleep 1
+        for _ in 1 2 3 4 5 6; do
+          pgrep -f 'pppd /dev/cu[.]usbserial' >/dev/null 2>&1 || break
+          sleep 0.5
+        done
+        if pgrep -f 'pppd /dev/cu[.]usbserial' >/dev/null 2>&1; then
+          # Apple pppd can wedge and ignore SIGTERM after its charshunt dies.
+          pkill -9 -f 'pppd /dev/cu[.]usbserial' 2>/dev/null || true
+          sleep 1
+        fi
         [ -f /etc/ppp/options ] || { mkdir -p /etc/ppp; : > /etc/ppp/options; }
         : > "$REC"
         touch "$LOG"
@@ -154,9 +162,10 @@ public enum PppController {
     }
 
     public static func stopLink() throws {
-        let shell = "pkill -f '[.]jornada-link/run-ppp[.]sh' ; " +
+        let shell = "pkill -9 -f '[.]jornada-link/run-ppp[.]sh' ; " +
             "pkill -f '^(/bin/sh |sh |sudo ).*bin/jornada[-]ppp' ; sleep 1 ; " +
-            "pkill -f 'pppd /dev/cu[.]usbserial' ; echo ok"
+            "pkill -f 'pppd /dev/cu[.]usbserial' ; sleep 2 ; " +
+            "pkill -9 -f 'pppd /dev/cu[.]usbserial' ; echo ok"
         try runPrivileged(shell,
                           prompt: "Jornada Sync needs administrator access to stop the serial PPP link.")
     }
