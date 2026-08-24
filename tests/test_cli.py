@@ -87,3 +87,17 @@ def test_dccm_port_in_use_is_reported():
         assert "cannot listen" in outcome["exit"]
     finally:
         blocker.close()
+
+
+def test_ppp_down_detected_fast(monkeypatch):
+    import socket as socket_module
+    monkeypatch.setattr(socket_module, "if_nameindex", lambda: [(1, "lo0"), (2, "en0")])
+    with pytest.raises(SystemExit) as info:
+        cli.main(["ls"])  # default IP 192.168.131.201 -> requires ppp
+    assert "PPP link is down" in str(info.value)
+
+
+def test_explicit_ip_skips_ppp_check(device, monkeypatch):
+    import socket as socket_module
+    monkeypatch.setattr(socket_module, "if_nameindex", lambda: [(1, "lo0")])
+    assert run(device, "ls", "\\My Documents") == 0

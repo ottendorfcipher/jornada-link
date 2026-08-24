@@ -4,6 +4,7 @@ from __future__ import annotations
 import argparse
 import logging
 import os
+import socket
 import sys
 import time
 from pathlib import Path
@@ -26,8 +27,20 @@ def _device_ip(args: argparse.Namespace) -> str:
     return DEFAULT_REMOTE_IP
 
 
+def _ppp_interface_present() -> bool:
+    try:
+        return any(name.startswith("ppp") for _idx, name in socket.if_nameindex())
+    except OSError:
+        return True  # cannot enumerate: fall through to the real connection attempt
+
+
 def _connect(args: argparse.Namespace) -> RapiClient:
     ip = _device_ip(args)
+    if ip.startswith("192.168.131.") and not _ppp_interface_present():
+        raise SystemExit(
+            "the PPP link is down (no ppp interface exists).\n"
+            "Run `sudo bin/jornada-ppp`, then start PC Link on the Jornada, and retry."
+        )
     state = read_state(DEFAULT_STATE_PATH) or {}
     client = RapiClient(ip, args.rapi_port)
     try:
