@@ -28,7 +28,7 @@ if [ "$(id -u)" -ne 0 ]; then
 fi
 
 # Serial port: argument > $JORNADA_SERIAL > ~/.jornada-link/serial > first /dev/cu.usbserial-*
-RUN_AS=${SUDO_USER:-$(id -un)}
+RUN_AS=${JORNADA_RUN_AS:-${SUDO_USER:-$(id -un)}}
 USER_HOME=$(dscl . -read "/Users/$RUN_AS" NFSHomeDirectory 2>/dev/null | awk '{print $2}')
 USER_HOME=${USER_HOME:-/tmp}
 DEVICE=${1:-${JORNADA_SERIAL:-}}

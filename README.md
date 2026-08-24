@@ -95,6 +95,32 @@ Jornada. Useful if RAPI misbehaves; it cannot copy files *from* the device.
   an empty one.
 * Extra pppd options: `PPP_EXTRA="lcp-echo-interval 10 lcp-echo-failure 6" sudo -E bin/jornada-ppp`.
 
+## Jornada Sync.app — the macOS GUI
+
+`macapp/` holds a native SwiftUI app styled after Microsoft ActiveSync
+(emerald sync-ring branding, device banner with the green "connected" orb,
+a sync-items style Overview) with current macOS chrome. Build it with:
+
+```bash
+~/Desktop/jornada-link/macapp/build.sh
+```
+
+which produces `macapp/dist/Jornada Sync.app` (ad-hoc signed, custom .icns).
+The app speaks the protocols natively (Swift ports of the dccm listener and
+RAPI client — no Python at runtime):
+
+* **Connect** in the toolbar starts `bin/jornada-ppp` as root via the system
+  authorization dialog (pppd needs root); Disconnect stops it.
+* The app runs its own dccm listener on 5679; if the CLI's listener is already
+  running it follows `~/.jornada-link/connection.json` instead (companion mode).
+* Files pane: browse, drag-and-drop from Finder to upload, double-click or
+  context-menu Download…, rename/delete/new-folder, Run on Device for .exe.
+* Transfers pane shows progress/throughput; Log pane mirrors app + dccm events.
+* Protocol self-test against the Python fake device:
+  `python3 - <<'PY'` … start `tests/fake_device.FakeRapiServer` … then
+  `macapp/.build/debug/SelfTest rapi <port>` (11 checks) and
+  `SelfTest dccm <port>` against `FakeActiveSyncClient`.
+
 ## Layout
 
 ```
