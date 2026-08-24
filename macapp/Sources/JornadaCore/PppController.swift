@@ -68,14 +68,26 @@ public enum PppController {
         FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".jornada-link")
     }
 
+    /// A serial path is only accepted if it is a plain /dev/cu.* node with no
+    /// shell-hostile characters — it is interpolated into a root command, and
+    /// the pin file below is user-writable (OWASP A05, defense in depth).
+    static func isValidSerialPath(_ path: String) -> Bool {
+        guard path.hasPrefix("/dev/cu.") else { return false }
+        let allowed = CharacterSet(charactersIn:
+            "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789/._-")
+        return path.unicodeScalars.allSatisfy { allowed.contains($0) }
+    }
+
     public static func serialDevice() -> String? {
         let pinned = stateDirectory().appendingPathComponent("serial")
         if let text = try? String(contentsOf: pinned, encoding: .utf8) {
             let path = text.trimmingCharacters(in: .whitespacesAndNewlines)
-            if FileManager.default.fileExists(atPath: path) { return path }
+            if isValidSerialPath(path), FileManager.default.fileExists(atPath: path) { return path }
         }
         let nodes = (try? FileManager.default.contentsOfDirectory(atPath: "/dev")) ?? []
-        return nodes.filter { $0.hasPrefix("cu.usbserial-") }.sorted().first.map { "/dev/" + $0 }
+        return nodes.filter { $0.hasPrefix("cu.usbserial-") }.sorted().first
+            .map { "/dev/" + $0 }
+            .flatMap { isValidSerialPath($0) ? $0 : nil }
     }
 
     public static func baud() -> Int {

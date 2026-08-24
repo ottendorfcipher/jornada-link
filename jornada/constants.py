@@ -16,6 +16,10 @@ DCCM_MIN_PACKET_SIZE = 0x24
 
 # --- RAPI: remote API served by the device ---------------------------------
 RAPI_PORT = 990
+# Hard cap on a single RAPI reply frame. The device object store is 16 MB and
+# real replies are a few KB; this bounds memory if a malfunctioning or hostile
+# peer sends a huge length prefix (OWASP A10 / denial of service).
+RAPI_MAX_FRAME = 16 * 1024 * 1024
 RAPI_RECV_TIMEOUT_S = 30.0
 
 # RAPI command codes (librapi2 0.9.x, "old" protocol used by CE 2.x/3.x)

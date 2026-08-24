@@ -62,7 +62,7 @@ def test_password_challenge_without_password_is_fatal():
 def test_server_end_to_end_with_fake_device(tmp_path: Path):
     state_path = tmp_path / "conn.json"
     connected = []
-    server = DccmServer(bind_ip="127.0.0.1", port=0, state_path=state_path,
+    server = DccmServer(bind_ip="127.0.0.1", port=0, state_path=state_path, allowed_peer="127.0.0.1",
                         ping_interval=0.05, on_connect=connected.append)
     server.open()
     result = {}
@@ -93,7 +93,7 @@ def test_server_end_to_end_with_fake_device(tmp_path: Path):
 
 
 def test_server_drops_silent_device(tmp_path: Path):
-    server = DccmServer(bind_ip="127.0.0.1", port=0, state_path=tmp_path / "c.json", ping_interval=0.02)
+    server = DccmServer(bind_ip="127.0.0.1", port=0, state_path=tmp_path / "c.json", ping_interval=0.02, allowed_peer="127.0.0.1")
     server.open()
     result = {}
     thread = threading.Thread(target=lambda: result.update(session=server.serve_one(timeout=5)), daemon=True)
@@ -108,7 +108,7 @@ def test_server_drops_silent_device(tmp_path: Path):
 
 
 def test_server_with_password(tmp_path: Path):
-    server = DccmServer(bind_ip="127.0.0.1", port=0, password="pw", state_path=tmp_path / "c.json", ping_interval=0.05)
+    server = DccmServer(bind_ip="127.0.0.1", port=0, password="pw", state_path=tmp_path / "c.json", ping_interval=0.05, allowed_peer="127.0.0.1")
     server.open()
     thread = threading.Thread(target=lambda: server.serve_one(timeout=5), daemon=True)
     thread.start()
@@ -117,4 +117,23 @@ def test_server_with_password(tmp_path: Path):
     assert device.password_ok is True
     device.close()
     thread.join(timeout=5)
+    server.close()
+
+
+def test_server_rejects_unexpected_peer(tmp_path: Path):
+    # allowed_peer is 10.0.0.1 but the fake device connects from 127.0.0.1
+    server = DccmServer(bind_ip="127.0.0.1", port=0, state_path=tmp_path / "c.json",
+                        ping_interval=0.05, allowed_peer="10.0.0.1")
+    server.open()
+    result = {}
+    thread = threading.Thread(target=lambda: result.update(s=server.serve_one(timeout=2)), daemon=True)
+    thread.start()
+    device = FakeActiveSyncClient(server.port)
+    try:
+        device.connect()
+    except (ConnectionError, OSError, AssertionError):
+        pass  # server closes us before/at the handshake
+    thread.join(timeout=3)
+    assert result.get("s") is None  # connection was refused, no session
+    device.close()
     server.close()

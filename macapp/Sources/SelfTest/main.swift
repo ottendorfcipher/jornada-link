@@ -72,7 +72,7 @@ case "dccm":
     let semaphore = DispatchSemaphore(value: 0)
     final class Box: @unchecked Sendable { var info: DccmListener.DeviceInfo? }
     let box = Box()
-    let listener = DccmListener(port: port) { event in
+    let listener = DccmListener(port: port, allowedPeer: "127.0.0.1") { event in
         switch event {
         case .deviceConnected(let info):
             box.info = info

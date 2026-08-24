@@ -45,6 +45,7 @@ from .constants import (
     INVALID_FILE_ATTRIBUTES,
     INVALID_HANDLE_VALUE,
     OPEN_EXISTING,
+    RAPI_MAX_FRAME,
     RAPI_PORT,
     RAPI_RECV_TIMEOUT_S,
     READ_CHUNK,
@@ -142,7 +143,7 @@ class RapiClient:
         if self._sock is None:
             raise RapiError("not connected")
         transport.send_frame(self._sock, wire.u32(command) + payload)
-        reader = wire.Reader(transport.recv_frame(self._sock))
+        reader = wire.Reader(transport.recv_frame(self._sock, max_size=RAPI_MAX_FRAME))
         result_1 = reader.u32()
         if result_1 == 1:
             hresult = reader.u32()

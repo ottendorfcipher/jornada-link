@@ -42,6 +42,16 @@ if [ -z "$DEVICE" ] || [ ! -c "$DEVICE" ]; then
   echo "jornada-ppp: no USB serial device found (pass it explicitly, e.g. /dev/cu.usbserial-XXXX)" >&2
   exit 1
 fi
+# Defense in depth: DEVICE may come from a user-writable pin file and is passed
+# to root-owned pppd, so constrain it to a plain /dev/cu.* node (no shell
+# metacharacters, no path traversal).
+case "$DEVICE" in
+  /dev/cu.*) ;;
+  *) echo "jornada-ppp: refusing suspicious serial path: $DEVICE" >&2; exit 1;;
+esac
+case "$DEVICE" in
+  *[!/A-Za-z0-9._-]*) echo "jornada-ppp: serial path has invalid characters: $DEVICE" >&2; exit 1;;
+esac
 # Baud: argument > $JORNADA_BAUD > ~/.jornada-link/baud > default
 BAUD=${2:-${JORNADA_BAUD:-}}
 if [ -z "$BAUD" ] && [ -r "$USER_HOME/.jornada-link/baud" ]; then

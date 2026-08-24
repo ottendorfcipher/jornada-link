@@ -35,3 +35,16 @@ def test_backup_tree_mirrors_and_manifests(device, tmp_path: Path):
     with RapiClient("127.0.0.1", device.port, timeout=5) as client:
         stats2 = backup_tree(client, "\\", tmp_path / "bk", log=lambda _line: None)
     assert stats2.files == 0 and stats2.skipped_existing == 3
+
+
+def test_backup_rejects_traversal_names(tmp_path: Path):
+    from jornada.backup import _local_name, _safe_child
+    assert _local_name("..") == "_.."
+    assert _local_name("a/b") == "a_b"
+    assert _local_name("a\\b") == "a_b"
+    assert _local_name("") == "_unnamed"
+    root = tmp_path / "root"
+    root.mkdir()
+    # a normal name resolves under root; a traversal token is neutralized, not escaping
+    assert _safe_child(root, "file.txt").name == "file.txt"
+    assert _safe_child(root, "..").parent == root  # neutralized to "_.." under root

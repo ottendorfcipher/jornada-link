@@ -49,6 +49,10 @@ public final class DccmListener: @unchecked Sendable {
 
     private let queue = DispatchQueue(label: "dccm.listener")
     private let port: UInt16
+    /// Only this peer IP (the device across the PPP link) may connect. The
+    /// socket binds INADDR_ANY because the PPP interface may not exist yet when
+    /// we start, so we filter by peer instead (OWASP A01/A02).
+    private let allowedPeer: String
     private let stateLock = NSLock()
     private var listenerFd: Int32 = -1
     private var clientFd: Int32 = -1
@@ -65,8 +69,11 @@ public final class DccmListener: @unchecked Sendable {
     /// presents a challenge; return nil to fail the connection.
     public var passwordProvider: (@Sendable () -> String?)?
 
-    public init(port: UInt16 = DccmListener.port, events: @escaping @Sendable (Event) -> Void) {
+    public init(port: UInt16 = DccmListener.port,
+                allowedPeer: String = "192.168.131.201",
+                events: @escaping @Sendable (Event) -> Void) {
         self.port = port
+        self.allowedPeer = allowedPeer
         self.eventSink = events
     }
 
@@ -123,6 +130,11 @@ public final class DccmListener: @unchecked Sendable {
             var ipBuffer = [CChar](repeating: 0, count: Int(INET_ADDRSTRLEN))
             inet_ntop(AF_INET, &peer.sin_addr, &ipBuffer, socklen_t(INET_ADDRSTRLEN))
             let ip = String(cString: ipBuffer)
+            guard ip == allowedPeer else {
+                eventSink(.log("dccm: rejecting connection from unexpected peer \(ip)"))
+                Darwin.close(client)
+                continue
+            }
             stateLock.lock()
             clientFd = client
             stateLock.unlock()

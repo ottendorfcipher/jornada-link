@@ -23,9 +23,25 @@ class BackupStats:
     errors: List[str] = field(default_factory=list)
 
 
+# Windows-CE path separators and traversal tokens are never valid as a single
+# local filename component. A hostile or buggy RAPI server controls these
+# names, so we neutralize them rather than trust the device (OWASP A01/A05).
 def _local_name(name: str) -> str:
-    """Device names are FAT-ish; strip characters APFS dislikes."""
-    return name.replace("/", "_").replace(":", "_")
+    """Reduce a device entry name to one safe local path component."""
+    cleaned = name.replace("/", "_").replace("\\", "_").replace(":", "_").replace("\x00", "")
+    cleaned = cleaned.strip()
+    if cleaned in ("", ".", "..") or cleaned.strip(".") == "":
+        cleaned = "_" + (cleaned or "unnamed")
+    return cleaned
+
+
+def _safe_child(parent: Path, name: str) -> Path:
+    """Join ``name`` under ``parent`` and refuse anything that escapes it."""
+    child = (parent / _local_name(name))
+    resolved_parent = parent.resolve()
+    if resolved_parent not in child.resolve().parents and child.resolve() != resolved_parent:
+        raise ValueError(f"unsafe device entry name {name!r} escapes {parent}")
+    return child
 
 
 def backup_tree(
@@ -59,12 +75,12 @@ def backup_tree(
                 if not include_cards and entry.name.lower().startswith("storage card"):
                     log(f"  (skipping removable {device_path}; use --include-cards)")
                     continue
-                walk(device_path, local_dir / _local_name(entry.name))
+                walk(device_path, _safe_child(local_dir, entry.name))
                 continue
             if not include_rom and (entry.attributes & ROM_MASK):
                 stats.skipped_rom += 1
                 continue
-            target = local_dir / _local_name(entry.name)
+            target = _safe_child(local_dir, entry.name)
             if target.exists() and target.stat().st_size == entry.size:
                 stats.skipped_existing += 1
                 manifest.append(_manifest_row(device_path, entry, None))

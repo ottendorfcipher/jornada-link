@@ -18,6 +18,7 @@ from typing import Callable, Optional
 from . import password as pw
 from . import transport, wire
 from .constants import (
+    DEFAULT_REMOTE_IP,
     DCCM_MAX_MISSED_PINGS,
     DCCM_MAX_PACKET_SIZE,
     DCCM_MIN_PACKET_SIZE,
@@ -102,9 +103,14 @@ class DccmServer:
         state_path: Path = DEFAULT_STATE_PATH,
         ping_interval: float = DCCM_PING_INTERVAL_S,
         on_connect: Optional[Callable[[Session], None]] = None,
+        allowed_peer: Optional[str] = DEFAULT_REMOTE_IP,
     ) -> None:
         self._bind_ip = bind_ip
         self._port = port
+        # Only this peer IP (the device across the PPP link) may talk to us.
+        # The socket must bind 0.0.0.0 because the PPP interface may not exist
+        # yet when we start, so we filter by peer instead (OWASP A01/A02).
+        self._allowed_peer = allowed_peer
         self._password = password
         self._state_path = state_path
         self._ping_interval = ping_interval
@@ -142,6 +148,8 @@ class DccmServer:
                 if not ready:
                     continue
                 conn, addr = self._listener.accept()
+                if not self._peer_allowed(conn, addr[0]):
+                    continue
                 self._serve_client(conn, addr[0])
         finally:
             self.close()
@@ -155,7 +163,16 @@ class DccmServer:
         if not ready:
             return None
         conn, addr = self._listener.accept()
+        if not self._peer_allowed(conn, addr[0]):
+            return None
         return self._serve_client(conn, addr[0])
+
+    def _peer_allowed(self, conn: socket.socket, ip: str) -> bool:
+        if self._allowed_peer is not None and ip != self._allowed_peer:
+            log.warning("rejecting dccm connection from unexpected peer %s", ip)
+            conn.close()
+            return False
+        return True
 
     def _serve_client(self, conn: socket.socket, ip: str) -> Session:
         log.info("device connected from %s", ip)
