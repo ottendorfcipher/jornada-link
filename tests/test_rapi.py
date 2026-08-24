@@ -122,3 +122,8 @@ def test_sync_time(client, device):
     assert device.clock_set_to == [1_700_000_000.5]
     client.sync_time_from_mac()
     assert abs(device.clock_set_to[-1] - time.time()) < 5
+
+
+def test_create_shortcut(client, device):
+    client.create_shortcut("\\Windows\\Desktop\\X.lnk", "\\Program Files\\x.exe")
+    assert device.shortcuts == [("\\Windows\\Desktop\\X.lnk", "\\Program Files\\x.exe")]

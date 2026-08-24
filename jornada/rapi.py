@@ -17,6 +17,7 @@ from .constants import (
     CMD_CREATE_DIRECTORY,
     CMD_CREATE_FILE,
     CMD_CREATE_PROCESS,
+    CMD_CREATE_SHORTCUT,
     CMD_DELETE_FILE,
     CMD_FIND_ALL_FILES,
     CMD_GET_FILE_ATTRIBUTES,
@@ -269,6 +270,11 @@ class RapiClient:
         if info is None or len(info) < SIZEOF_PROCESS_INFORMATION:
             return 0
         return wire.Reader(info, 8).u32()  # dwProcessId
+
+    def create_shortcut(self, shortcut_path: str, target: str) -> None:
+        """CeSHCreateShortcut: make a .lnk on the device pointing at ``target``."""
+        payload = wire.optional_string(shortcut_path) + wire.optional_string(target)
+        self._check_bool("CeSHCreateShortcut", self._call_simple(CMD_CREATE_SHORTCUT, payload))
 
     def sync_time_from_mac(self, now: Optional[float] = None) -> None:
         """CeSyncTimeToPc: set the device clock to this machine's time."""

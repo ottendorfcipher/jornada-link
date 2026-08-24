@@ -18,6 +18,7 @@ from jornada.constants import (
     CMD_CREATE_DIRECTORY,
     CMD_CREATE_FILE,
     CMD_CREATE_PROCESS,
+    CMD_CREATE_SHORTCUT,
     CMD_DELETE_FILE,
     CMD_FIND_ALL_FILES,
     CMD_GET_FILE_ATTRIBUTES,
@@ -109,6 +110,7 @@ class FakeRapiServer:
         self.key = key
         self.launched: list = []
         self.clock_set_to: list = []
+        self.shortcuts: list = []
         self._handles: Dict[int, OpenFile] = {}
         self._next_handle = 0x100
         self._listener = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -172,6 +174,7 @@ class FakeRapiServer:
             CMD_GET_STORE_INFORMATION: self._get_store_information,
             CMD_GET_SYSTEM_POWER_STATUS_EX: self._get_power_status,
             CMD_SYNC_TIME_TO_PC: self._sync_time,
+            CMD_CREATE_SHORTCUT: self._create_shortcut,
         }.get(command)
         if handler is None:
             return wire.u32(1) + wire.u32(0x80004001)  # E_NOTIMPL as result_2
@@ -306,6 +309,12 @@ class FakeRapiServer:
         pid = 0x1000 + len(self.launched)
         info = wire.u32(0x10) + wire.u32(0x11) + wire.u32(pid) + wire.u32(0x12)
         return _ok(1, wire.u32(1) + wire.u32(len(info)) + wire.u32(1) + info)
+
+    def _create_shortcut(self, reader: wire.Reader) -> bytes:
+        shortcut = _read_optional_string(reader)
+        target = _read_optional_string(reader)
+        self.shortcuts.append((shortcut, target))
+        return _ok(1)
 
     def _sync_time(self, reader: wire.Reader) -> bytes:
         low, high = reader.u32(), reader.u32()

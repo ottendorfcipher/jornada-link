@@ -179,6 +179,13 @@ def cmd_run(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_shortcut(args: argparse.Namespace) -> int:
+    with _connect(args) as client:
+        client.create_shortcut(args.shortcut, args.target)
+    print(f"created {args.shortcut} -> {args.target}")
+    return 0
+
+
 def cmd_settime(args: argparse.Namespace) -> int:
     with _connect(args) as client:
         client.sync_time_from_mac()
@@ -283,6 +290,11 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("exe")
     p.add_argument("args", nargs=argparse.REMAINDER)
     p.set_defaults(func=cmd_run)
+
+    p = sub.add_parser("shortcut", help="create a .lnk on the device")
+    p.add_argument("shortcut", help=r"e.g. '\Windows\Desktop\Frotz.lnk'")
+    p.add_argument("target", help=r"e.g. '\Program Files\Frotz\frotz.exe'")
+    p.set_defaults(func=cmd_shortcut)
 
     sub.add_parser("settime", help="set the Jornada's clock from this Mac").set_defaults(func=cmd_settime)
 
