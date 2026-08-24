@@ -96,7 +96,10 @@ case "dccm":
     listener.stop()
 
 case "runner":
-    let path = try PppController.writeRunnerScript(device: "/dev/cu.usbserial-TEST", baud: 115200)
+    let scratch = FileManager.default.temporaryDirectory
+        .appendingPathComponent("jornada-selftest-\(ProcessInfo.processInfo.processIdentifier)")
+    let path = try PppController.writeRunnerScript(device: "/dev/cu.usbserial-TEST", baud: 115200,
+                                                   directory: scratch)
     print(path)
 
 default:

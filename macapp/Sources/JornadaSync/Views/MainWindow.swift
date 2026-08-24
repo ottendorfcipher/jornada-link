@@ -37,20 +37,23 @@ struct MainWindow: View {
 
     @ToolbarContentBuilder
     private var connectionToolbar: some ToolbarContent {
-        ToolbarItem(placement: .navigation) {
-            if model.phase == .down {
-                Button {
-                    model.connectLink()
-                } label: {
-                    Label("Connect", systemImage: "bolt.horizontal.circle")
-                }
-                .help("Start the serial PPP link (asks for administrator rights)")
-            } else {
+        ToolbarItemGroup(placement: .navigation) {
+            Button {
+                model.connectLink()
+            } label: {
+                Label(model.phase == .down ? "Connect" : "Reconnect",
+                      systemImage: model.phase == .connected
+                        ? "bolt.horizontal.circle.fill" : "bolt.horizontal.circle")
+                    .foregroundStyle(model.phase == .connected ? .green : .primary)
+            }
+            .help(model.phase == .down
+                  ? "Start the serial PPP link (asks for administrator rights)"
+                  : "Fully restart the serial PPP link — fixes a stuck connection (asks for administrator rights)")
+            if model.phase != .down {
                 Button {
                     model.disconnectLink()
                 } label: {
-                    Label("Disconnect", systemImage: "bolt.horizontal.circle.fill")
-                        .foregroundStyle(model.phase == .connected ? .green : .primary)
+                    Label("Disconnect", systemImage: "xmark.circle")
                 }
                 .help("Stop the serial PPP link")
             }

@@ -9,7 +9,7 @@ struct BannerView: View {
         switch model.phase {
         case .down: return "Not connected"
         case .waitingForDevice: return "Waiting for the device — tap PC Link on the Jornada"
-        case .pppUp: return "Serial link up — waiting for ActiveSync…"
+        case .pppUp: return "Serial link up — tap PC Link on the Jornada (or click Reconnect if stuck)"
         case .connected: return "Connected"
         }
     }

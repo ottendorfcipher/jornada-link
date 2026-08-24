@@ -102,8 +102,8 @@ public enum PppController {
 
     /// Write the root runner script into ~/.jornada-link (plain-ASCII paths,
     /// no Desktop involvement) and return its path.
-    public static func writeRunnerScript(device: String, baud: Int) throws -> String {
-        let directory = stateDirectory()
+    public static func writeRunnerScript(device: String, baud: Int,
+                                         directory: URL = stateDirectory()) throws -> String {
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         let log = directory.appendingPathComponent("ppp.log").path
         let record = directory.appendingPathComponent("ppp.record").path
