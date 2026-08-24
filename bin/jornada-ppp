@@ -111,6 +111,14 @@ sudo -u "$RUN_AS" mkdir -p "$USER_HOME/.jornada-link"
 touch "$PPP_LOG"; chown "$RUN_AS" "$PPP_LOG" 2>/dev/null || true
 echo "=== jornada-ppp run $(date) dev=$DEVICE baud=$BAUD ===" >> "$PPP_LOG"
 
+# Drop any stale bytes (e.g. an old buffered CLIENT) before pppd opens the port.
+/usr/bin/python3 - "$DEVICE" <<'PYEOF' 2>/dev/null || true
+import os, sys, termios
+fd = os.open(sys.argv[1], os.O_RDWR | os.O_NOCTTY | os.O_NONBLOCK)
+termios.tcflush(fd, termios.TCIOFLUSH)
+os.close(fd)
+PYEOF
+
 echo "jornada-ppp: $DEVICE @ $BAUD, Mac=$LOCAL_IP device=$REMOTE_IP"
 echo "jornada-ppp: pppd log -> $PPP_LOG ; raw traffic -> $PPP_REC"
 echo "jornada-ppp: waiting for the device — start PC Link (Start > Programs > Communication > PC Link) on the Jornada"
