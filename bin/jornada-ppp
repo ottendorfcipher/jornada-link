@@ -93,6 +93,7 @@ else
   echo "jornada-ppp: started dccm listener (pid $DCCM_PID, log: $DCCM_LOG)"
 fi
 PPPD_PID=""
+STOP=0
 cleanup() {
   if [ -n "$PPPD_PID" ]; then
     kill "$PPPD_PID" 2>/dev/null || true
@@ -101,9 +102,14 @@ cleanup() {
     kill "$DCCM_PID" 2>/dev/null || true
   fi
 }
-# HUP matters: without it, closing the terminal orphaned a persistent root
-# pppd that kept the serial port busy forever.
-trap cleanup EXIT INT TERM HUP
+on_signal() {
+  STOP=1
+  cleanup
+}
+# HUP matters: without it, closing the terminal orphaned a root pppd that kept
+# the serial port busy forever.
+trap on_signal INT TERM HUP
+trap cleanup EXIT
 
 # Fresh, user-readable diagnostics for every run.
 sudo -u "$RUN_AS" mkdir -p "$USER_HOME/.jornada-link"
@@ -111,25 +117,39 @@ sudo -u "$RUN_AS" mkdir -p "$USER_HOME/.jornada-link"
 touch "$PPP_LOG"; chown "$RUN_AS" "$PPP_LOG" 2>/dev/null || true
 echo "=== jornada-ppp run $(date) dev=$DEVICE baud=$BAUD ===" >> "$PPP_LOG"
 
-# Drop any stale bytes (e.g. an old buffered CLIENT) before pppd opens the port.
-/usr/bin/python3 - "$DEVICE" <<'PYEOF' 2>/dev/null || true
+echo "jornada-ppp: $DEVICE @ $BAUD, Mac=$LOCAL_IP device=$REMOTE_IP"
+echo "jornada-ppp: pppd log -> $PPP_LOG ; raw traffic -> $PPP_REC"
+echo "jornada-ppp: waiting for the device — start PC Link (Start > Programs > Communication > PC Link) on the Jornada"
+
+# Notes on the options:
+#  - no `persist`: Apple pppd's in-process re-open is broken (TIOCSCTTY EPERM,
+#    then endless "Resource busy" against itself); the while-loop below starts
+#    a FRESH pppd for every connection instead.
+#  - ipcp-restart 10: Windows CE starts its own IPCP a few seconds late (it
+#    negotiates CCP/MPPE first) and ignores IPCP ConfReq retransmits once its
+#    side is open; pppd's default 3s restart timer therefore deadlocked.
+#  - noacsp: don't spam the device with Apple's proprietary ACSCP (0x8235).
+while [ "$STOP" -eq 0 ]; do
+  # Drop stale bytes (e.g. an old buffered CLIENT) before pppd opens the port.
+  /usr/bin/python3 - "$DEVICE" <<'PYEOF' 2>/dev/null || true
 import os, sys, termios
 fd = os.open(sys.argv[1], os.O_RDWR | os.O_NOCTTY | os.O_NONBLOCK)
 termios.tcflush(fd, termios.TCIOFLUSH)
 os.close(fd)
 PYEOF
-
-echo "jornada-ppp: $DEVICE @ $BAUD, Mac=$LOCAL_IP device=$REMOTE_IP"
-echo "jornada-ppp: pppd log -> $PPP_LOG ; raw traffic -> $PPP_REC"
-echo "jornada-ppp: waiting for the device — start PC Link (Start > Programs > Communication > PC Link) on the Jornada"
-
-/usr/sbin/pppd "$DEVICE" "$BAUD" \
-  "$LOCAL_IP:$REMOTE_IP" ms-dns "$LOCAL_IP" \
-  nodetach local noauth nodefaultroute nocrtscts \
-  persist holdoff 2 maxfail 0 \
-  debug \
-  logfile "$PPP_LOG" record "$PPP_REC" \
-  connect "/usr/sbin/chat -v -s -t $CHAT_TIMEOUT CLIENT 'CLIENTSERVER\\c' 2>>'$PPP_LOG'" \
-  ${PPP_EXTRA:-} &
-PPPD_PID=$!
-wait "$PPPD_PID"
+  /usr/sbin/pppd "$DEVICE" "$BAUD" \
+    "$LOCAL_IP:$REMOTE_IP" ms-dns "$LOCAL_IP" \
+    nodetach local noauth nodefaultroute nocrtscts \
+    ipcp-restart 10 noacsp \
+    debug \
+    logfile "$PPP_LOG" record "$PPP_REC" \
+    connect "/usr/sbin/chat -v -s -t $CHAT_TIMEOUT CLIENT 'CLIENTSERVER\\c' 2>>'$PPP_LOG'" \
+    ${PPP_EXTRA:-} &
+  PPPD_PID=$!
+  wait "$PPPD_PID" || true
+  PPPD_PID=""
+  if [ "$STOP" -eq 0 ]; then
+    echo "jornada-ppp: link ended — waiting for the next connection (Ctrl-C to quit)"
+    sleep 2 || true
+  fi
+done
