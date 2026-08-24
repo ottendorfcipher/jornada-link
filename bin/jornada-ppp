@@ -134,6 +134,9 @@ echo "jornada-ppp: waiting for the device — start PC Link (Start > Programs > 
 #    negotiates CCP/MPPE first) and ignores IPCP ConfReq retransmits once its
 #    side is open; pppd's default 3s restart timer therefore deadlocked.
 #  - noacsp: don't spam the device with Apple's proprietary ACSCP (0x8235).
+#  - lcp-echo-*: dead-peer detection — if the Jornada suspends or the cable is
+#    pulled, pppd notices within ~45s, exits, and the loop re-arms the CLIENT
+#    handshake for the next PC Link. Without it pppd wedges in IP mode forever.
 while [ "$STOP" -eq 0 ]; do
   # Drop stale bytes (e.g. an old buffered CLIENT) before pppd opens the port.
   /usr/bin/python3 - "$DEVICE" <<'PYEOF' 2>/dev/null || true
@@ -146,6 +149,7 @@ PYEOF
     "$LOCAL_IP:$REMOTE_IP" ms-dns "$LOCAL_IP" \
     nodetach local noauth nodefaultroute nocrtscts \
     ipcp-restart 10 noacsp \
+    lcp-echo-interval 9 lcp-echo-failure 5 \
     debug \
     logfile "$PPP_LOG" record "$PPP_REC" \
     connect "/usr/sbin/chat -v -s -t $CHAT_TIMEOUT CLIENT 'CLIENTSERVER\\c' 2>>'$PPP_LOG'" \

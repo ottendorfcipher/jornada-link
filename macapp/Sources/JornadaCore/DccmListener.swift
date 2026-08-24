@@ -8,8 +8,8 @@ public final class DccmListener: @unchecked Sendable {
     private static let ping: UInt32 = 0x1234_5678
     private static let maxPacket = 512
     private static let minPacket = 0x24
-    private static let pingInterval: Double = 4.0
-    private static let maxMissedPings = 3
+    private static let pingInterval: Double = 5.0
+    private static let maxMissedPings = 5
 
     public struct DeviceInfo: Equatable {
         public let name: String
