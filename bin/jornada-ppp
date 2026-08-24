@@ -43,6 +43,22 @@ if [ -z "$DEVICE" ] || [ ! -c "$DEVICE" ]; then
   exit 1
 fi
 BAUD=${2:-$DEFAULT_BAUD}
+
+# Reclaim the port: an earlier jornada-ppp (e.g. orphaned when its terminal
+# closed) may still hold the device; we are root, so stop it first.
+if pgrep -f "pppd $DEVICE" >/dev/null 2>&1; then
+  echo "jornada-ppp: stopping an earlier pppd holding $DEVICE"
+  pkill -f "pppd $DEVICE" 2>/dev/null || true
+  for _ in 1 2 3 4 5 6 7 8 9 10; do
+    pgrep -f "pppd $DEVICE" >/dev/null 2>&1 || break
+    sleep 0.5
+  done
+  if pgrep -f "pppd $DEVICE" >/dev/null 2>&1; then
+    echo "jornada-ppp: earlier pppd did not exit; trying SIGKILL"
+    pkill -9 -f "pppd $DEVICE" 2>/dev/null || true
+    sleep 1
+  fi
+fi
 case "$BAUD" in 9600|19200|38400|57600|115200) ;; *) echo "jornada-ppp: unsupported baud $BAUD" >&2; exit 1;; esac
 
 # Apple's pppd refuses to start unless this file exists (it may be empty).
@@ -64,12 +80,18 @@ else
   DCCM_PID=$!
   echo "jornada-ppp: started dccm listener (pid $DCCM_PID, log: $DCCM_LOG)"
 fi
+PPPD_PID=""
 cleanup() {
+  if [ -n "$PPPD_PID" ]; then
+    kill "$PPPD_PID" 2>/dev/null || true
+  fi
   if [ -n "$DCCM_PID" ]; then
     kill "$DCCM_PID" 2>/dev/null || true
   fi
 }
-trap cleanup EXIT INT TERM
+# HUP matters: without it, closing the terminal orphaned a persistent root
+# pppd that kept the serial port busy forever.
+trap cleanup EXIT INT TERM HUP
 
 echo "jornada-ppp: $DEVICE @ $BAUD, Mac=$LOCAL_IP device=$REMOTE_IP"
 echo "jornada-ppp: waiting for the device — start PC Link (Start > Programs > Communication > PC Link) on the Jornada"
@@ -80,4 +102,6 @@ echo "jornada-ppp: waiting for the device — start PC Link (Start > Programs > 
   persist holdoff 2 maxfail 0 \
   debug \
   connect "/usr/sbin/chat -v -s -t $CHAT_TIMEOUT CLIENT 'CLIENTSERVER\\c'" \
-  ${PPP_EXTRA:-}
+  ${PPP_EXTRA:-} &
+PPPD_PID=$!
+wait "$PPPD_PID"
