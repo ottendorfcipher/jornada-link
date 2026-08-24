@@ -80,6 +80,8 @@ fi
 
 # --- dccm listener, running as the real user -------------------------------
 DCCM_LOG="$USER_HOME/.jornada-link/dccm.log"
+PPP_LOG="$USER_HOME/.jornada-link/ppp.log"
+PPP_REC="$USER_HOME/.jornada-link/ppp.record"
 DCCM_PID=""
 if nc -z 127.0.0.1 "$DCCM_PORT" 2>/dev/null; then
   echo "jornada-ppp: a dccm listener is already on port $DCCM_PORT — reusing it"
@@ -103,7 +105,14 @@ cleanup() {
 # pppd that kept the serial port busy forever.
 trap cleanup EXIT INT TERM HUP
 
+# Fresh, user-readable diagnostics for every run.
+sudo -u "$RUN_AS" mkdir -p "$USER_HOME/.jornada-link"
+: > "$PPP_REC"; chown "$RUN_AS" "$PPP_REC" 2>/dev/null || true
+touch "$PPP_LOG"; chown "$RUN_AS" "$PPP_LOG" 2>/dev/null || true
+echo "=== jornada-ppp run $(date) dev=$DEVICE baud=$BAUD ===" >> "$PPP_LOG"
+
 echo "jornada-ppp: $DEVICE @ $BAUD, Mac=$LOCAL_IP device=$REMOTE_IP"
+echo "jornada-ppp: pppd log -> $PPP_LOG ; raw traffic -> $PPP_REC"
 echo "jornada-ppp: waiting for the device — start PC Link (Start > Programs > Communication > PC Link) on the Jornada"
 
 /usr/sbin/pppd "$DEVICE" "$BAUD" \
@@ -111,7 +120,8 @@ echo "jornada-ppp: waiting for the device — start PC Link (Start > Programs > 
   nodetach local noauth nodefaultroute nocrtscts \
   persist holdoff 2 maxfail 0 \
   debug \
-  connect "/usr/sbin/chat -v -s -t $CHAT_TIMEOUT CLIENT 'CLIENTSERVER\\c'" \
+  logfile "$PPP_LOG" record "$PPP_REC" \
+  connect "/usr/sbin/chat -v -s -t $CHAT_TIMEOUT CLIENT 'CLIENTSERVER\\c' 2>>'$PPP_LOG'" \
   ${PPP_EXTRA:-} &
 PPPD_PID=$!
 wait "$PPPD_PID"

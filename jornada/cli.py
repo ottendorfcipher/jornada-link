@@ -166,6 +166,17 @@ def cmd_run(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_ppplog(args: argparse.Namespace) -> int:
+    from .ppprecord import dump
+    path = args.record or str(Path.home() / ".jornada-link" / "ppp.record")
+    try:
+        for line in dump(path):
+            print(line)
+    except FileNotFoundError:
+        raise SystemExit(f"{path} not found — bring the link up first (sudo bin/jornada-ppp records there)")
+    return 0
+
+
 def cmd_probe(args: argparse.Namespace) -> int:
     from .serial_probe import sniff
     sniff(args.device, args.baud, args.seconds)
@@ -223,6 +234,10 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("exe")
     p.add_argument("args", nargs=argparse.REMAINDER)
     p.set_defaults(func=cmd_run)
+
+    p = sub.add_parser("ppplog", help="decode the pppd record file into readable PPP frames")
+    p.add_argument("record", nargs="?", help="default: ~/.jornada-link/ppp.record")
+    p.set_defaults(func=cmd_ppplog)
 
     p = sub.add_parser("probe", help="sniff the serial line (no root needed)")
     p.add_argument("device")
