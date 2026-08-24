@@ -4,7 +4,7 @@ from __future__ import annotations
 # --- Network layout (matches SynCE defaults) --------------------------------
 DEFAULT_LOCAL_IP = "192.168.131.102"   # the Mac's end of the PPP link
 DEFAULT_REMOTE_IP = "192.168.131.201"  # the Jornada's end of the PPP link
-DEFAULT_BAUD = 19200                   # Jornada "PC Connection" default rate
+DEFAULT_BAUD = 115200                  # match the Jornada's PC Connection rate
 
 # --- dccm: the "desktop" side of an ActiveSync connection -------------------
 DCCM_PORT = 5679

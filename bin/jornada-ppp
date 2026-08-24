@@ -16,7 +16,7 @@ set -eu
 
 LOCAL_IP=192.168.131.102
 REMOTE_IP=192.168.131.201
-DEFAULT_BAUD=19200          # the Jornada's factory "PC Connection" rate
+DEFAULT_BAUD=115200         # match the Jornada's Control Panel > Communications > PC Connection rate
 CHAT_TIMEOUT=3600           # seconds to wait for CLIENT before retrying
 DCCM_PORT=5679
 
@@ -42,7 +42,12 @@ if [ -z "$DEVICE" ] || [ ! -c "$DEVICE" ]; then
   echo "jornada-ppp: no USB serial device found (pass it explicitly, e.g. /dev/cu.usbserial-XXXX)" >&2
   exit 1
 fi
-BAUD=${2:-$DEFAULT_BAUD}
+# Baud: argument > $JORNADA_BAUD > ~/.jornada-link/baud > default
+BAUD=${2:-${JORNADA_BAUD:-}}
+if [ -z "$BAUD" ] && [ -r "$USER_HOME/.jornada-link/baud" ]; then
+  BAUD=$(head -n 1 "$USER_HOME/.jornada-link/baud")
+fi
+BAUD=${BAUD:-$DEFAULT_BAUD}
 
 # Kill stale copies of this wrapper first (their shells must not outlive us:
 # a dead-but-waiting sh would resume reading this script file after its pppd
