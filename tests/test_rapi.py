@@ -114,3 +114,11 @@ def test_password_protected_device():
 def test_not_connected():
     with pytest.raises(RapiError):
         RapiClient("127.0.0.1", 1).call(0)
+
+
+def test_sync_time(client, device):
+    import time
+    client.sync_time_from_mac(now=1_700_000_000.5)
+    assert device.clock_set_to == [1_700_000_000.5]
+    client.sync_time_from_mac()
+    assert abs(device.clock_set_to[-1] - time.time()) < 5

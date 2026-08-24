@@ -9,7 +9,7 @@ from tests.fake_device import FakeFilesystem, FakeRapiServer
 @pytest.fixture
 def device():
     fs = FakeFilesystem()
-    fs.dirs.add("\\My Documents")
+    fs.dirs.update({"\\My Documents", "\\Temp"})
     fs.files["\\My Documents\\a.txt"] = b"A" * 10
     server = FakeRapiServer(fs).start()
     try:
@@ -101,3 +101,15 @@ def test_explicit_ip_skips_ppp_check(device, monkeypatch):
     import socket as socket_module
     monkeypatch.setattr(socket_module, "if_nameindex", lambda: [(1, "lo0")])
     assert run(device, "ls", "\\My Documents") == 0
+
+
+def test_settime_and_install_commands(device, tmp_path, capsys):
+    assert run(device, "settime") == 0
+    assert device.clock_set_to
+    cab = tmp_path / "app.cab"
+    cab.write_bytes(b"MSCE" + bytes(500))
+    assert run(device, "install", str(cab)) == 0
+    assert device.fs.files["\\Temp\\app.cab"] == b"MSCE" + bytes(500)
+    assert device.launched[-1] == ("\\Windows\\wceload.exe", "\\Temp\\app.cab")
+    out = capsys.readouterr().out
+    assert "installer launched" in out

@@ -74,6 +74,23 @@ struct OverviewView: View {
                       value: model.batteryText,
                       status: model.onACPower ? "AC" : "Battery",
                       progress: model.batteryPercent.map { Double($0) / 100 })
+            Divider().padding(.leading, 44)
+            HStack(spacing: 12) {
+                Image(systemName: "clock.arrow.2.circlepath")
+                    .font(.system(size: 17))
+                    .foregroundStyle(Color(red: 0.16, green: 0.55, blue: 0.36))
+                    .frame(width: 30)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("Clock").font(.headline)
+                    Text("Sync the Jornada's date and time to this Mac")
+                        .font(.callout).foregroundStyle(.secondary)
+                }
+                Spacer()
+                Button("Set Clock") { model.setDeviceClock() }
+                    .disabled(model.phase != .connected)
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 11)
         }
         .background(.background.secondary, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous)

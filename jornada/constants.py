@@ -36,6 +36,7 @@ CMD_MOVE_FILE = 0x1A
 CMD_COPY_FILE = 0x1B
 CMD_DELETE_FILE = 0x1C
 CMD_GET_FILE_SIZE = 0x1D
+CMD_SYNC_TIME_TO_PC = 0x37
 CMD_GET_STORE_INFORMATION = 0x29
 CMD_GET_SYSTEM_INFO = 0x2F
 CMD_GET_VERSION_EX = 0x3B
@@ -79,10 +80,10 @@ OPEN_ALWAYS = 4
 TRUNCATE_EXISTING = 5
 INVALID_HANDLE_VALUE = 0xFFFFFFFF
 
-# Transfer chunking: 19200 baud is ~1.9 KB/s, keep chunks small for progress
-# and to stay well inside the device's reply window.
-READ_CHUNK = 8 * 1024
-WRITE_CHUNK = 8 * 1024
+# Transfer chunking: each chunk costs a request/reply turnaround, so bigger
+# chunks raise throughput; 28K is proven safe on the Jornada 680e.
+READ_CHUNK = 28 * 1024
+WRITE_CHUNK = 28 * 1024
 
 # Sizes of fixed structs returned by misc commands
 SIZEOF_STORE_INFORMATION = 8

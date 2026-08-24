@@ -221,6 +221,17 @@ final class AppModel: ObservableObject {
         }
     }
 
+    func setDeviceClock() {
+        Task {
+            do {
+                try await rapi.run("settime") { try $0.syncTimeFromMac() }
+                log("device clock set from this Mac")
+            } catch {
+                explainRapiFailure(error, context: "set clock")
+            }
+        }
+    }
+
     // Files -------------------------------------------------------------------
     func loadDirectory(_ path: String) async {
         listingBusy = true

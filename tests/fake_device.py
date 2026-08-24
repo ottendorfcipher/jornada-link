@@ -26,6 +26,7 @@ from jornada.constants import (
     CMD_GET_VERSION_EX,
     CMD_MOVE_FILE,
     CMD_READ_FILE,
+    CMD_SYNC_TIME_TO_PC,
     CMD_REMOVE_DIRECTORY,
     CMD_WRITE_FILE,
     CREATE_ALWAYS,
@@ -107,6 +108,7 @@ class FakeRapiServer:
         self.password = password
         self.key = key
         self.launched: list = []
+        self.clock_set_to: list = []
         self._handles: Dict[int, OpenFile] = {}
         self._next_handle = 0x100
         self._listener = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -169,6 +171,7 @@ class FakeRapiServer:
             CMD_GET_VERSION_EX: self._get_version,
             CMD_GET_STORE_INFORMATION: self._get_store_information,
             CMD_GET_SYSTEM_POWER_STATUS_EX: self._get_power_status,
+            CMD_SYNC_TIME_TO_PC: self._sync_time,
         }.get(command)
         if handler is None:
             return wire.u32(1) + wire.u32(0x80004001)  # E_NOTIMPL as result_2
@@ -303,6 +306,12 @@ class FakeRapiServer:
         pid = 0x1000 + len(self.launched)
         info = wire.u32(0x10) + wire.u32(0x11) + wire.u32(pid) + wire.u32(0x12)
         return _ok(1, wire.u32(1) + wire.u32(len(info)) + wire.u32(1) + info)
+
+    def _sync_time(self, reader: wire.Reader) -> bytes:
+        low, high = reader.u32(), reader.u32()
+        ticks = (high << 32) | low
+        self.clock_set_to.append((ticks - 116_444_736_000_000_000) / 10_000_000)
+        return wire.u32(0) + wire.u32(0)  # result_1, last_error (no return value)
 
     def _get_version(self, reader: wire.Reader) -> bytes:
         csd = wire.wstr("")

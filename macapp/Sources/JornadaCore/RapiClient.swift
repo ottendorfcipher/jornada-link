@@ -15,6 +15,7 @@ public final class RapiClient {
         public static let moveFile: UInt32 = 0x1A
         public static let deleteFile: UInt32 = 0x1C
         public static let getVersion: UInt32 = 0x3B
+        public static let syncTimeToPc: UInt32 = 0x37
         public static let getStoreInformation: UInt32 = 0x29
         public static let getPowerStatus: UInt32 = 0x41
     }
@@ -307,6 +308,18 @@ public final class RapiClient {
         _ = try reader.u32()
         _ = try reader.u32()
         return try reader.u32()  // dwProcessId
+    }
+
+    /// CeSyncTimeToPc: set the device clock to this machine's current time.
+    public func syncTimeFromMac() throws {
+        let ticks = UInt64((Date().timeIntervalSince1970 * 10_000_000) + 116_444_736_000_000_000)
+        var writer = WireWriter()
+        writer.u32(UInt32(truncatingIfNeeded: ticks))
+        writer.u32(UInt32(truncatingIfNeeded: ticks >> 32))
+        writer.u32(0)
+        writer.u32(10_000)
+        var reader = try call(Command.syncTimeToPc, writer.data)
+        _ = try reader.u32()  // last_error; command has no return value
     }
 
     // MARK: - System information

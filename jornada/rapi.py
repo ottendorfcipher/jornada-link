@@ -24,6 +24,7 @@ from .constants import (
     CMD_GET_SYSTEM_POWER_STATUS_EX,
     CMD_GET_VERSION_EX,
     CMD_MOVE_FILE,
+    CMD_SYNC_TIME_TO_PC,
     CMD_READ_FILE,
     CMD_REMOVE_DIRECTORY,
     CMD_WRITE_FILE,
@@ -268,6 +269,18 @@ class RapiClient:
         if info is None or len(info) < SIZEOF_PROCESS_INFORMATION:
             return 0
         return wire.Reader(info, 8).u32()  # dwProcessId
+
+    def sync_time_from_mac(self, now: Optional[float] = None) -> None:
+        """CeSyncTimeToPc: set the device clock to this machine's time."""
+        import time as _time
+        unix_now = _time.time() if now is None else now
+        ticks = int((unix_now * 10_000_000) + 116_444_736_000_000_000)
+        payload = (
+            wire.u32(ticks & 0xFFFFFFFF) + wire.u32(ticks >> 32)
+            + wire.u32(0) + wire.u32(10_000)
+        )
+        reader = self.call(CMD_SYNC_TIME_TO_PC, payload)
+        reader.u32()  # last_error (command has no return value)
 
     # -- system information ---------------------------------------------------
     def get_version(self) -> VersionInfo:

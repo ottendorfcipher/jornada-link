@@ -179,6 +179,42 @@ def cmd_run(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_settime(args: argparse.Namespace) -> int:
+    with _connect(args) as client:
+        client.sync_time_from_mac()
+    print(f"device clock set from this Mac ({time.strftime('%Y-%m-%d %H:%M:%S')})")
+    return 0
+
+
+def cmd_backup(args: argparse.Namespace) -> int:
+    from .backup import backup_tree
+    destination = Path(args.destination).expanduser()
+    with _connect(args) as client:
+        print(f"backing up {args.path} -> {destination}")
+        stats = backup_tree(client, args.path, destination,
+                            include_rom=args.include_rom, include_cards=args.include_cards)
+    print(f"done: {stats.files} file(s), {_fmt_size(stats.bytes_copied)} bytes copied, "
+          f"{stats.skipped_existing} unchanged, {stats.skipped_rom} ROM skipped, "
+          f"{len(stats.errors)} error(s)")
+    for error in stats.errors:
+        print(f"  !! {error}")
+    return 1 if stats.errors else 0
+
+
+def cmd_install(args: argparse.Namespace) -> int:
+    local = Path(args.cab)
+    if not local.is_file():
+        raise SystemExit(f"{local} is not a file")
+    remote = f"\\Temp\\{local.name}"
+    data = local.read_bytes()
+    with _connect(args) as client:
+        print(f"copying {local.name} ({_fmt_size(len(data))} bytes) to {remote}")
+        client.upload(remote, data)
+        pid = client.create_process("\\Windows\\wceload.exe", remote)
+    print(f"installer launched on the device (pid {pid}) — follow the prompts on the Jornada")
+    return 0
+
+
 def cmd_ppplog(args: argparse.Namespace) -> int:
     from .ppprecord import dump
     path = args.record or str(Path.home() / ".jornada-link" / "ppp.record")
@@ -247,6 +283,19 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("exe")
     p.add_argument("args", nargs=argparse.REMAINDER)
     p.set_defaults(func=cmd_run)
+
+    sub.add_parser("settime", help="set the Jornada's clock from this Mac").set_defaults(func=cmd_settime)
+
+    p = sub.add_parser("backup", help="recursively copy a device subtree to the Mac")
+    p.add_argument("destination", help="local directory for the backup")
+    p.add_argument("path", nargs="?", default="\\", help="device root to back up (default: whole store)")
+    p.add_argument("--include-rom", action="store_true", help="also copy ROM-resident files")
+    p.add_argument("--include-cards", action="store_true", help="also copy Storage Card contents")
+    p.set_defaults(func=cmd_backup)
+
+    p = sub.add_parser("install", help="copy a .cab to the device and launch its installer")
+    p.add_argument("cab", help="CAB file built for Windows CE 2.x SH3")
+    p.set_defaults(func=cmd_install)
 
     p = sub.add_parser("ppplog", help="decode the pppd record file into readable PPP frames")
     p.add_argument("record", nargs="?", help="default: ~/.jornada-link/ppp.record")
