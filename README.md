@@ -98,6 +98,7 @@ cd jornada-link
 | `settime` | Set the device clock from this Mac |
 | `shortcut LNK TARGET` | Create a `.lnk` on the device |
 | `backup DEST [PATH]` | Recursively mirror a device subtree + JSON manifest |
+| `restore SOURCE [PATH]` | Push a backup or sent-mirror tree back onto the device (`--dry-run`, `--force`) |
 | *(automatic)* | Every `put`/`install`/app upload is also archived on the Mac — see below |
 | `install CAB` | Copy a `.cab` and launch the device installer (`wceload`) |
 | `probe DEVICE [BAUD] [SECONDS]` | Sniff the serial line (no root) |
@@ -124,6 +125,18 @@ archive: the previous version is kept under a timestamped name, and every send
 is recorded in `sent-manifest.jsonl` (time, device path, size, MD5 checksum,
 source file). Skip it per command with `--no-mirror`. The CLI and the app write
 the identical format — CI verifies the two implementations against each other.
+
+To put it all back — after a battery death, a hard reset, or onto a second
+device — point `restore` at either tree:
+
+```bash
+./bin/jornada restore ~/Documents/Jornada\ Backup/Sent\ to\ Device --dry-run
+./bin/jornada restore ./jornada-backup
+```
+
+It recreates folders, skips files already on the device with a matching size
+(`--force` resends everything), leaves manifests and timestamped archive
+versions out, and warns if the plan exceeds the device's free space.
 
 ## Passwordless connect (optional)
 

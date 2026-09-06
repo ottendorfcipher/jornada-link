@@ -145,3 +145,25 @@ def test_install_mirrors_cab(device, tmp_path, monkeypatch):
     cab.write_bytes(b"MSCE" + bytes(64))
     assert run(device, "install", str(cab)) == 0
     assert (mirror / "Temp" / "tool.cab").exists()
+
+
+def test_restore_command_round_trip(device, tmp_path, capsys):
+    tree = tmp_path / "tree"
+    (tree / "My Documents").mkdir(parents=True)
+    (tree / "My Documents" / "restored.txt").write_bytes(b"R" * 30)
+    (tree / "sent-manifest.jsonl").write_text("{}\n")
+    assert run(device, "restore", str(tree)) == 0
+    assert device.fs.files["\\My Documents\\restored.txt"] == b"R" * 30
+    assert not any("manifest" in p for p in device.fs.files)
+    out = capsys.readouterr().out
+    assert "restoring" in out
+
+
+def test_restore_dry_run_writes_nothing(device, tmp_path, capsys):
+    tree = tmp_path / "tree2"
+    tree.mkdir()
+    (tree / "ghost.bin").write_bytes(b"G" * 10)
+    before = dict(device.fs.files)
+    assert run(device, "restore", str(tree), "--dry-run") == 0
+    assert device.fs.files == before
+    assert "would send" in capsys.readouterr().out

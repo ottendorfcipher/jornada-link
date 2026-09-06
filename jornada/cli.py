@@ -221,6 +221,26 @@ def cmd_backup(args: argparse.Namespace) -> int:
     return 1 if stats.errors else 0
 
 
+def cmd_restore(args: argparse.Namespace) -> int:
+    from .restore import free_space_warning, plan_size, restore_tree
+    source = Path(args.source).expanduser()
+    if not source.is_dir():
+        raise SystemExit(f"{source} is not a directory")
+    with _connect(args) as client:
+        planned = plan_size(source)
+        if not args.dry_run:
+            warning = free_space_warning(client, planned)
+            if warning:
+                print(f"warning: {warning}")
+        print(f"{'planning' if args.dry_run else 'restoring'} {source} -> {args.path} "
+              f"(up to {_fmt_size(planned)} bytes before skips)")
+        stats = restore_tree(client, source, args.path,
+                             force=args.force, dry_run=args.dry_run)
+    for error in stats.errors:
+        print(f"  !! {error}")
+    return 1 if stats.errors else 0
+
+
 def cmd_install(args: argparse.Namespace) -> int:
     local = Path(args.cab)
     if not local.is_file():
@@ -320,6 +340,13 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--include-rom", action="store_true", help="also copy ROM-resident files")
     p.add_argument("--include-cards", action="store_true", help="also copy Storage Card contents")
     p.set_defaults(func=cmd_backup)
+
+    p = sub.add_parser("restore", help="push a backup or sent-mirror tree back onto the device")
+    p.add_argument("source", help="local tree made by `backup` or the sent-file archive")
+    p.add_argument("path", nargs="?", default="\\", help="device destination root (default: \\)")
+    p.add_argument("--force", action="store_true", help="resend even when name+size already match")
+    p.add_argument("--dry-run", action="store_true", help="show what would be sent without writing anything")
+    p.set_defaults(func=cmd_restore)
 
     p = sub.add_parser("install", help="copy a .cab to the device and launch its installer")
     p.add_argument("cab", help="CAB file built for Windows CE 2.x SH3")

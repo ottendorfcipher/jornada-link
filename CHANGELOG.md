@@ -8,6 +8,11 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **`jornada restore`**: push a `backup` or sent-mirror tree back onto the
+  device — recreates directories, skips name+size matches (`--force` overrides),
+  excludes manifests and timestamped archive versions, previews with
+  `--dry-run`, and warns when the plan exceeds the device's free object store.
+
 - **Sent-file archive**: every successful `put`, `install`, and app upload is
   also saved on the Mac under `~/Documents/Jornada Backup/Sent to Device/`
   (device-path-shaped tree, timestamped versioning of changed re-sends,
