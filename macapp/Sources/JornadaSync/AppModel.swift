@@ -8,6 +8,7 @@ final class AppModel: ObservableObject {
         case overview = "Overview"
         case files = "Files"
         case transfers = "Transfers"
+        case gpib = "GPIB"
         case logs = "Log"
         var id: String { rawValue }
         var symbol: String {
@@ -15,6 +16,7 @@ final class AppModel: ObservableObject {
             case .overview: return "arrow.triangle.2.circlepath"
             case .files: return "folder"
             case .transfers: return "arrow.up.arrow.down.circle"
+            case .gpib: return "waveform.path"
             case .logs: return "text.alignleft"
             }
         }
@@ -441,6 +443,19 @@ final class AppModel: ObservableObject {
                 lastError = "\(error)"
                 log("rename failed: \(error)")
             }
+        }
+    }
+
+    /// Launch a program by device path (used by the GPIB pane for the gateway).
+    func launchOnDevice(path: String) async -> Bool {
+        do {
+            let pid = try await rapi.run("run") { try $0.createProcess(path) }
+            log("started \(path) on the device (pid \(pid))")
+            return true
+        } catch {
+            lastError = "\(error)"
+            log("run \(path) failed: \(error)")
+            return false
         }
     }
 

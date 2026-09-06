@@ -125,6 +125,19 @@ public final class TcpSocket {
         return out
     }
 
+    /// Receive whatever is available, up to `max` bytes (blocks until at least one byte
+    /// arrives or the socket timeout elapses).
+    public func recvUpTo(_ max: Int) throws -> Data {
+        guard fd >= 0 else { throw SocketError.closed("recv") }
+        var buffer = [UInt8](repeating: 0, count: max)
+        let n = Darwin.recv(fd, &buffer, max, 0)
+        if n <= 0 {
+            if n < 0 && (errno == EAGAIN || errno == EWOULDBLOCK) { throw SocketError.timeout("recv") }
+            throw n == 0 ? SocketError.closed("recv") : SocketError.system("recv", errno)
+        }
+        return Data(buffer[0..<n])
+    }
+
     /// Length-prefixed frame I/O (u32 LE length + payload).
     public func sendFrame(_ payload: Data) throws {
         var writer = WireWriter()

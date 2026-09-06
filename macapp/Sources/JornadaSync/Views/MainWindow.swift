@@ -28,6 +28,7 @@ struct MainWindow: View {
                 case .overview: OverviewView(model: model)
                 case .files: FilesView(model: model)
                 case .transfers: TransfersView(model: model)
+                case .gpib: GpibView(model: model)
                 case .logs: LogsView(model: model)
                 }
             }

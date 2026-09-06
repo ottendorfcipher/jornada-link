@@ -9,12 +9,12 @@ import JornadaCore
 let arguments = CommandLine.arguments
 guard arguments.count >= 3 else {
     FileHandle.standardError.write(
-        Data("usage: SelfTest rapi <port> | dccm <port> | mirror <dir> | runner <n>\n".utf8))
+        Data("usage: SelfTest rapi <port> | dccm <port> | gpib <port> | mirror <dir> | runner <n>\n".utf8))
     exit(2)
 }
 // rapi/dccm need a TCP port; mirror/runner take a path or placeholder instead.
 let port = UInt16(arguments[2]) ?? 0
-if ["rapi", "dccm"].contains(arguments[1]) && port == 0 {
+if ["rapi", "dccm", "gpib"].contains(arguments[1]) && port == 0 {
     FileHandle.standardError.write(Data("usage: SelfTest rapi|dccm <port>\n".utf8))
     exit(2)
 }
@@ -101,6 +101,26 @@ case "dccm":
     check("device hardware", info?.hardware == "SH3")
     Thread.sleep(forTimeInterval: 0.3)
     listener.stop()
+
+case "gpib":
+    // Against tests/serve_fake_gateway.py (Prologix dialect, one instrument at address 1).
+    let gateway = GpibGateway(timeout: 3)
+    do {
+        try gateway.connect(host: "127.0.0.1", port: port)
+        check("++ver answered", try gateway.version() == "fake gateway 1.0")
+        check("*IDN? at address 1", try gateway.query(address: 1, "*IDN?") == "FAKE,TDS 340,0,FV:v1.02")
+        check("serial poll 64", try gateway.serialPoll(address: 1) == 64)
+        try gateway.write(address: 1, "ACQUIRE:STATE RUN")
+        try gateway.interfaceClear()
+        try gateway.deviceClear(address: 1)
+        var timedOut = false
+        do { _ = try gateway.read(address: 2) } catch GpibGateway.GpibError.timeout { timedOut = true }
+        check("read at an idle address times out", timedOut)
+        check("escape marks CR LF ESC and +", GpibGateway.escape(Data("a+b\r\n\u{1b}".utf8)) == Data("a\u{1b}+b\u{1b}\r\u{1b}\n\u{1b}\u{1b}".utf8))
+        gateway.close()
+    } catch {
+        check("gpib self-test threw \(error)", false)
+    }
 
 case "mirror":
     // Cross-language parity: write a mirror tree that the Python
