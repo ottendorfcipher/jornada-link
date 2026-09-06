@@ -345,6 +345,14 @@ final class AppModel: ObservableObject {
                 }
                 finishTransfer(transferId, state: .done)
                 log("uploaded \(url.lastPathComponent) → \(destination) (\(Self.bytes(UInt32(clamping: data.count))))")
+                do {
+                    let mirrored = try SendMirror.archive(data, devicePath: destination,
+                                                          source: url.path)
+                    log("mirrored to \(mirrored.path)")
+                } catch {
+                    // Never fail a completed transfer over the local archive.
+                    log("warning: sent OK, but could not mirror locally: \(error)")
+                }
                 await loadDirectory(currentPath)
             } catch {
                 finishTransfer(transferId, state: .failed("\(error)"))

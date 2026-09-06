@@ -98,6 +98,7 @@ cd jornada-link
 | `settime` | Set the device clock from this Mac |
 | `shortcut LNK TARGET` | Create a `.lnk` on the device |
 | `backup DEST [PATH]` | Recursively mirror a device subtree + JSON manifest |
+| *(automatic)* | Every `put`/`install`/app upload is also archived on the Mac — see below |
 | `install CAB` | Copy a `.cab` and launch the device installer (`wceload`) |
 | `probe DEVICE [BAUD] [SECONDS]` | Sniff the serial line (no root) |
 | `ppplog [FILE]` | Decode a `pppd` record file into readable PPP frames |
@@ -112,6 +113,17 @@ The app runs the protocol natively (Swift ports of the dccm listener and RAPI
 client — no Python at runtime). **Connect** starts the PPP link via the system
 administrator prompt; the Files pane supports drag-and-drop from Finder,
 download, rename/delete/new-folder, and Run-on-device for `.exe`s.
+
+## The sent-file archive
+
+The Jornada's object store is battery-backed RAM, so **everything you send to
+the device is automatically archived on the Mac too**, in a device-path-shaped
+tree at `~/Documents/Jornada Backup/Sent to Device/` (override with
+`$JORNADA_MIRROR_DIR`). Re-sending changed content never overwrites the
+archive: the previous version is kept under a timestamped name, and every send
+is recorded in `sent-manifest.jsonl` (time, device path, size, MD5 checksum,
+source file). Skip it per command with `--no-mirror`. The CLI and the app write
+the identical format — CI verifies the two implementations against each other.
 
 ## Passwordless connect (optional)
 

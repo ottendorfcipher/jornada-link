@@ -8,6 +8,14 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **Sent-file archive**: every successful `put`, `install`, and app upload is
+  also saved on the Mac under `~/Documents/Jornada Backup/Sent to Device/`
+  (device-path-shaped tree, timestamped versioning of changed re-sends,
+  append-only `sent-manifest.jsonl` with sizes and checksums). Opt out per
+  command with `--no-mirror`, relocate with `$JORNADA_MIRROR_DIR`. Implemented
+  identically in Python and Swift; a CI parity check validates the Swift
+  writer's output against the Python implementation's expectations.
+
 - **Optional passwordless connect** (`bin/jornada-setup-passwordless`): a
   one-time installer that places two root-owned, argument-free helper scripts
   (`jornada-connect` / `jornada-disconnect`) and a narrowly scoped `sudoers.d`

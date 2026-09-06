@@ -113,3 +113,35 @@ def test_settime_and_install_commands(device, tmp_path, capsys):
     assert device.launched[-1] == ("\\Windows\\wceload.exe", "\\Temp\\app.cab")
     out = capsys.readouterr().out
     assert "installer launched" in out
+
+
+def test_put_mirrors_sent_file(device, tmp_path, monkeypatch, capsys):
+    from jornada.sendmirror import ENV_MIRROR_DIR
+    mirror = tmp_path / "mirror"
+    monkeypatch.setenv(ENV_MIRROR_DIR, str(mirror))
+    src = tmp_path / "m.bin"
+    src.write_bytes(b"M" * 100)
+    assert run(device, "put", str(src), "\\My Documents\\m.bin") == 0
+    assert (mirror / "My Documents" / "m.bin").read_bytes() == b"M" * 100
+    assert "mirrored to" in capsys.readouterr().err
+    assert (mirror / "sent-manifest.jsonl").exists()
+
+
+def test_put_no_mirror_flag(device, tmp_path, monkeypatch):
+    from jornada.sendmirror import ENV_MIRROR_DIR
+    mirror = tmp_path / "mirror2"
+    monkeypatch.setenv(ENV_MIRROR_DIR, str(mirror))
+    src = tmp_path / "n.bin"
+    src.write_bytes(b"N")
+    assert run(device, "put", str(src), "\\My Documents\\n.bin", "--no-mirror") == 0
+    assert not mirror.exists()
+
+
+def test_install_mirrors_cab(device, tmp_path, monkeypatch):
+    from jornada.sendmirror import ENV_MIRROR_DIR
+    mirror = tmp_path / "mirror3"
+    monkeypatch.setenv(ENV_MIRROR_DIR, str(mirror))
+    cab = tmp_path / "tool.cab"
+    cab.write_bytes(b"MSCE" + bytes(64))
+    assert run(device, "install", str(cab)) == 0
+    assert (mirror / "Temp" / "tool.cab").exists()

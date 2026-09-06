@@ -7,7 +7,14 @@ import JornadaCore
 ///   SelfTest rapi <port>
 ///   SelfTest dccm <port>     (listens; exits 0 once a device handshakes + 2 pings)
 let arguments = CommandLine.arguments
-guard arguments.count >= 3, let port = UInt16(arguments[2]) else {
+guard arguments.count >= 3 else {
+    FileHandle.standardError.write(
+        Data("usage: SelfTest rapi <port> | dccm <port> | mirror <dir> | runner <n>\n".utf8))
+    exit(2)
+}
+// rapi/dccm need a TCP port; mirror/runner take a path or placeholder instead.
+let port = UInt16(arguments[2]) ?? 0
+if ["rapi", "dccm"].contains(arguments[1]) && port == 0 {
     FileHandle.standardError.write(Data("usage: SelfTest rapi|dccm <port>\n".utf8))
     exit(2)
 }
@@ -94,6 +101,21 @@ case "dccm":
     check("device hardware", info?.hardware == "SH3")
     Thread.sleep(forTimeInterval: 0.3)
     listener.stop()
+
+case "mirror":
+    // Cross-language parity: write a mirror tree that the Python
+    // implementation's tests then validate (tests/check_mirror_parity.py).
+    let rootDir = URL(fileURLWithPath: CommandLine.arguments[2])
+    let base = Date(timeIntervalSince1970: 1_700_000_000)
+    _ = try SendMirror.archive(Data("one".utf8), devicePath: "\\My Documents\\parity.txt",
+                               source: "/tmp/src.txt", rootOverride: rootDir, date: base)
+    _ = try SendMirror.archive(Data("one".utf8), devicePath: "\\My Documents\\parity.txt",
+                               source: "/tmp/src.txt", rootOverride: rootDir, date: base + 30)
+    _ = try SendMirror.archive(Data("two".utf8), devicePath: "\\My Documents\\parity.txt",
+                               source: "/tmp/src.txt", rootOverride: rootDir, date: base + 60)
+    _ = try SendMirror.archive(Data("x".utf8), devicePath: "\\..\\evil.txt",
+                               source: nil, rootOverride: rootDir, date: base + 90)
+    print("mirror parity tree written to \(rootDir.path)")
 
 case "runner":
     let scratch = FileManager.default.temporaryDirectory

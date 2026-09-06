@@ -42,3 +42,8 @@ jobs:
           python3 tests/serve_fake.py 60 > /tmp/port &
           sleep 3
           macapp/.build/debug/SelfTest rapi "$(cat /tmp/port)"
+      - name: Send-mirror format parity (Swift writer vs Python validator)
+        run: |
+          PAR=$(mktemp -d)
+          macapp/.build/debug/SelfTest mirror "$PAR"
+          python3 tests/check_mirror_parity.py "$PAR"

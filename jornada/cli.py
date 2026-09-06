@@ -141,7 +141,20 @@ def cmd_put(args: argparse.Namespace) -> int:
         written = client.upload(remote, data, progress=progress)
     elapsed = max(time.monotonic() - started, 1e-6)
     sys.stderr.write(f"\ruploaded {local} -> {remote} ({_fmt_size(written)} bytes, {written / elapsed / 1024:.1f} KB/s)\n")
+    _mirror_after_send(args, data, remote, source=str(local))
     return 0
+
+
+def _mirror_after_send(args: argparse.Namespace, data: bytes, remote: str, source: str) -> None:
+    """Archive a successfully-sent payload on the Mac (see jornada.sendmirror)."""
+    if getattr(args, "no_mirror", False):
+        return
+    from .sendmirror import mirror_sent
+    try:
+        mirrored = mirror_sent(data, remote, source=source)
+        sys.stderr.write(f"mirrored to {mirrored}\n")
+    except (OSError, ValueError) as exc:
+        sys.stderr.write(f"warning: sent OK, but could not mirror locally: {exc}\n")
 
 
 def cmd_rm(args: argparse.Namespace) -> int:
@@ -219,6 +232,7 @@ def cmd_install(args: argparse.Namespace) -> int:
         client.upload(remote, data)
         pid = client.create_process("\\Windows\\wceload.exe", remote)
     print(f"installer launched on the device (pid {pid}) — follow the prompts on the Jornada")
+    _mirror_after_send(args, data, remote, source=str(local))
     return 0
 
 
@@ -267,6 +281,8 @@ def build_parser() -> argparse.ArgumentParser:
     p = sub.add_parser("put", help="copy a file Mac -> device")
     p.add_argument("local")
     p.add_argument("remote", nargs="?", help=r"default: \My Documents\<name>")
+    p.add_argument("--no-mirror", action="store_true",
+                   help="skip the Mac-side sent-file archive")
     p.set_defaults(func=cmd_put)
 
     p = sub.add_parser("rm", help="delete a device file")
@@ -307,6 +323,8 @@ def build_parser() -> argparse.ArgumentParser:
 
     p = sub.add_parser("install", help="copy a .cab to the device and launch its installer")
     p.add_argument("cab", help="CAB file built for Windows CE 2.x SH3")
+    p.add_argument("--no-mirror", action="store_true",
+                   help="skip the Mac-side sent-file archive")
     p.set_defaults(func=cmd_install)
 
     p = sub.add_parser("ppplog", help="decode the pppd record file into readable PPP frames")
