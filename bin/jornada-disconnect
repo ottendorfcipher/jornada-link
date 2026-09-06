@@ -23,6 +23,7 @@ if [ -f "$RUNDIR/loop.pid" ]; then
   [ -n "${loop:-}" ] && kill -9 "$loop" 2>/dev/null || true
   rm -f "$RUNDIR/loop.pid"
 fi
+pkill -9 -f 'jornada-ppp-loop' 2>/dev/null || true
 pkill -9 -f '[.]jornada-link/run-ppp[.]sh' 2>/dev/null || true
 pkill -9 -f '^(/bin/sh |sh |sudo ).*bin/jornada[-]ppp' 2>/dev/null || true
 

@@ -88,6 +88,7 @@ if [ -f "$RUNDIR/loop.pid" ]; then
   [ -n "${old:-}" ] && kill -9 "$old" 2>/dev/null || true
   rm -f "$RUNDIR/loop.pid"
 fi
+pkill -9 -f 'jornada-ppp-loop' 2>/dev/null || true
 pkill -9 -f '[.]jornada-link/run-ppp[.]sh' 2>/dev/null || true
 pkill -9 -f '^(/bin/sh |sh |sudo ).*bin/jornada[-]ppp' 2>/dev/null || true
 pkill -f 'pppd /dev/cu[.]usbserial' 2>/dev/null || true
@@ -120,7 +121,10 @@ nohup sh -c '
     echo "=== pppd exited $(date); retrying ===" >> "$LOG"
     sleep 2
   done
-' >>"$LOG" 2>&1 &
+' jornada-ppp-loop >>"$LOG" 2>&1 &
+# The trailing operand becomes the loop shell's $0 and shows up in its argv, so
+# `pgrep -f jornada-ppp-loop` can see the engine even between pppd restarts
+# (an anonymous `sh -c` was invisible to every health check).
 
 echo $! > "$RUNDIR/loop.pid"
 echo "jornada-connect: link starting on $DEVICE @ $BAUD (loop pid $(cat "$RUNDIR/loop.pid"))"

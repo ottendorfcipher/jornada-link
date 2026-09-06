@@ -46,9 +46,14 @@ public enum PppController {
         return false
     }
 
-    /// True when a pppd for a usbserial device (or the runner loop) exists.
+    /// True when a pppd for a usbserial device or any retry loop exists.
+    /// `jornada-ppp-loop` is the argv marker the passwordless helper gives its
+    /// loop shell (visible even between pppd restarts); run-ppp.sh is the
+    /// legacy admin-prompt runner.
     public static func engineRunning() -> Bool {
-        pgrep("pppd /dev/cu[.]usbserial") || pgrep("[.]jornada-link/run-ppp[.]sh")
+        pgrep("pppd /dev/cu[.]usbserial")
+            || pgrep("jornada-ppp-loop")
+            || pgrep("[.]jornada-link/run-ppp[.]sh")
     }
 
     private static func pgrep(_ pattern: String) -> Bool {

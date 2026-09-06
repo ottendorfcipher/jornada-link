@@ -81,6 +81,20 @@ def test_connect_validates_serial_device():
     assert "invalid characters" in body, "connect helper must reject metacharacters"
 
 
+def test_connect_loop_carries_process_marker():
+    # The detached retry loop must be findable by health checks even while pppd
+    # is between restarts; the argv-0 operand after the sh -c script is that
+    # marker. An anonymous loop was invisible and caused false "engine dead"
+    # diagnoses (and real cleanup gaps).
+    body = CONNECT.read_text()
+    assert "' jornada-ppp-loop " in body, "loop shell must carry the jornada-ppp-loop argv marker"
+
+
+def test_disconnect_kills_marked_loop():
+    body = DISCONNECT.read_text()
+    assert "jornada-ppp-loop" in body, "disconnect must also target the marked loop"
+
+
 def test_connect_only_reads_root_owned_config():
     # Config must come from the root-owned /usr/local/etc path, never $HOME.
     body = CONNECT.read_text()

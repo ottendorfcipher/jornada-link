@@ -89,6 +89,7 @@ final class AppModel: ObservableObject {
         case .deviceConnected(let info):
             device = info
             phase = .connected
+            syncGaveUp = false   // fresh session, fresh chance
             log("device connected: \(info.name) (\(info.hardware), \(info.osText)) at \(info.ip)")
             rapi.configure(host: info.ip, password: devicePassword.isEmpty ? nil : devicePassword,
                            passwordKey: info.passwordKey ?? 0)
@@ -96,6 +97,7 @@ final class AppModel: ObservableObject {
         case .deviceDisconnected(let ip):
             log("device at \(ip) disconnected")
             device = nil
+            syncGaveUp = false
             entries = []
             osVersionText = "—"
             rapi.disconnect()
@@ -132,8 +134,10 @@ final class AppModel: ObservableObject {
             }
         }
         // Safety net: connected to a device but the listing is empty (a missed or
-        // failed initial fetch) — resync. initialSync() is idempotent.
-        if phase == .connected, device != nil, entries.isEmpty, !listingBusy, !isSyncing {
+        // failed initial fetch) — resync, at most every 16s, and never once the
+        // session has given up (initialSync's own latch enforces that too).
+        if phase == .connected, device != nil, entries.isEmpty, !listingBusy,
+           !isSyncing, !syncGaveUp, pollCount % 8 == 0 {
             Task { await initialSync() }
         }
     }
@@ -210,23 +214,36 @@ final class AppModel: ObservableObject {
     /// after an auto-reconnect. Without this, a transient first-call failure
     /// left the UI connected-but-blank.
     private var isSyncing = false
+    /// Set when a session's sync attempts are exhausted; cleared by the next
+    /// connect/disconnect. Prevents the poll loop from retrying forever —
+    /// sustained retry pressure is what wedges the device's rapisrv.
+    private var syncGaveUp = false
+
     func initialSync() async {
-        guard !isSyncing else { return }
+        guard !isSyncing, !syncGaveUp else { return }
         isSyncing = true
         defer { isSyncing = false }
-        for attempt in 1...6 {
+        let backoffSeconds: [UInt64] = [2, 5, 10]
+        for (index, delay) in backoffSeconds.enumerated() {
             let infoOK = await refreshDeviceInfo()
-            let filesOK = await loadDirectory(currentPath)
+            // Only probe the listing once the info calls prove RAPI is alive:
+            // a dead port 990 then costs one connection per attempt, not two.
+            let filesOK = infoOK ? await loadDirectory(currentPath) : false
             if infoOK && filesOK {
                 lastError = nil
                 return
             }
             if device == nil { return }   // device went away; stop retrying
-            if attempt < 6 {
-                log("device not ready yet — retrying (\(attempt)/6)…")
-                try? await Task.sleep(nanoseconds: 1_500_000_000)
+            if index < backoffSeconds.count - 1 {
+                log("device file service not ready — next attempt in \(delay)s…")
+                try? await Task.sleep(nanoseconds: delay * 1_000_000_000)
             }
         }
+        syncGaveUp = true
+        log("pausing automatic sync for this session — the device's file service isn't answering")
+        lastError = "The Jornada's file service (port 990) is not answering. " +
+            "Give it a quiet minute, then reconnect PC Link on the device; " +
+            "if it still fails, soft-reset the Jornada and reconnect."
     }
 
     @discardableResult

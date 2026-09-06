@@ -10,6 +10,13 @@ final class RapiService: @unchecked Sendable {
     private var host = PppController.deviceIp
     private var password: String?
     private var passwordKey: UInt8 = 0
+    /// Gentleness contract: rapisrv on a CE 2.x device is a single-threaded
+    /// 1998 service, and rapid connect/close cycles wedge it (observed live:
+    /// a retry burst left port 990 refusing every connection while dccm kept
+    /// working). Fresh connections are therefore rate-limited here, below any
+    /// caller, so no retry logic above can turn into a storm.
+    private var lastConnectAttempt = Date.distantPast
+    private let minSecondsBetweenConnects: TimeInterval = 2.0
 
     func configure(host: String, password: String?, passwordKey: UInt8) {
         queue.async { [self] in
@@ -38,6 +45,13 @@ final class RapiService: @unchecked Sendable {
                     if let existing = client, existing.isConnected {
                         active = existing
                     } else {
+                        let sinceLast = Date().timeIntervalSince(lastConnectAttempt)
+                        if sinceLast < minSecondsBetweenConnects {
+                            // Blocking this serial background queue briefly is the
+                            // point: it spaces out every reconnect attempt.
+                            Thread.sleep(forTimeInterval: minSecondsBetweenConnects - sinceLast)
+                        }
+                        lastConnectAttempt = Date()
                         let fresh = RapiClient(host: host)
                         try fresh.connect(password: password, key: passwordKey)
                         client = fresh
