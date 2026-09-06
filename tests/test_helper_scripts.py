@@ -58,6 +58,23 @@ def test_privileged_helpers_do_not_source_files(script: Path):
         assert not stripped.startswith("source "), f"{script} sources a file: {line!r}"
 
 
+@pytest.mark.parametrize("script", HELPERS)
+def test_helpers_clear_legacy_engines(script: Path):
+    # Regression: a legacy admin-prompt runner (run-ppp.sh) left alive fights the
+    # helper's loop for the serial port ("Resource busy" every 2s). Both helpers
+    # must kill retry loops and wrapper shells, not just pppd.
+    body = script.read_text()
+    assert "run-ppp[.]sh" in body, f"{script} must kill the legacy run-ppp.sh loop"
+    assert "bin/jornada[-]ppp" in body, f"{script} must kill CLI wrapper shells"
+    assert "pkill -9 -f 'pppd /dev/cu[.]usbserial'" in body, f"{script} must SIGKILL wedged pppd"
+
+
+def test_installer_runs_cleanup_after_install():
+    # The reinstall is the one authenticated step, so it must also clear any
+    # legacy engine that would otherwise sabotage the new helper.
+    assert '"$DISCONNECT"' in INSTALLER.read_text()
+
+
 def test_connect_validates_serial_device():
     body = CONNECT.read_text()
     assert "/dev/cu." in body, "connect helper must constrain the device path"

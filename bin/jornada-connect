@@ -79,14 +79,25 @@ fi
 
 mkdir -p "$RUNDIR"
 
-# --- stop any previous instance, then start a fresh detached loop ----------
+# --- stop EVERY previous engine, then start a fresh detached loop ----------
+# Two retry loops racing for one serial port produce an endless "Resource
+# busy" fight, so kill the retry loops FIRST (our own, the legacy admin-prompt
+# runner, and any CLI wrapper shell), then the pppd processes they spawned.
 if [ -f "$RUNDIR/loop.pid" ]; then
   old=$(cat "$RUNDIR/loop.pid" 2>/dev/null || true)
-  [ -n "${old:-}" ] && kill "$old" 2>/dev/null || true
+  [ -n "${old:-}" ] && kill -9 "$old" 2>/dev/null || true
+  rm -f "$RUNDIR/loop.pid"
 fi
+pkill -9 -f '[.]jornada-link/run-ppp[.]sh' 2>/dev/null || true
+pkill -9 -f '^(/bin/sh |sh |sudo ).*bin/jornada[-]ppp' 2>/dev/null || true
 pkill -f 'pppd /dev/cu[.]usbserial' 2>/dev/null || true
-sleep 1
+i=0
+while [ $i -lt 6 ] && pgrep -f 'pppd /dev/cu[.]usbserial' >/dev/null 2>&1; do
+  i=$((i+1)); sleep 0.5
+done
+# Apple pppd can ignore SIGTERM once wedged (after its charshunt dies).
 pkill -9 -f 'pppd /dev/cu[.]usbserial' 2>/dev/null || true
+sleep 1
 
 echo "=== jornada-connect $(date) dev=$DEVICE baud=$BAUD ===" >> "$LOG"
 

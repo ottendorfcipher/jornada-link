@@ -15,14 +15,22 @@ if [ "$(id -u)" -ne 0 ]; then
   exit 1
 fi
 
+# Kill every retry loop first (ours, the legacy admin-prompt runner, any CLI
+# wrapper shell) so nothing respawns pppd behind our back, then the pppd
+# processes themselves, escalating to SIGKILL.
 if [ -f "$RUNDIR/loop.pid" ]; then
   loop=$(cat "$RUNDIR/loop.pid" 2>/dev/null || true)
-  [ -n "${loop:-}" ] && kill "$loop" 2>/dev/null || true
+  [ -n "${loop:-}" ] && kill -9 "$loop" 2>/dev/null || true
   rm -f "$RUNDIR/loop.pid"
 fi
+pkill -9 -f '[.]jornada-link/run-ppp[.]sh' 2>/dev/null || true
+pkill -9 -f '^(/bin/sh |sh |sudo ).*bin/jornada[-]ppp' 2>/dev/null || true
 
 pkill -f 'pppd /dev/cu[.]usbserial' 2>/dev/null || true
-sleep 1
+i=0
+while [ $i -lt 6 ] && pgrep -f 'pppd /dev/cu[.]usbserial' >/dev/null 2>&1; do
+  i=$((i+1)); sleep 0.5
+done
 pkill -9 -f 'pppd /dev/cu[.]usbserial' 2>/dev/null || true
 
 echo "jornada-disconnect: link stopped"
