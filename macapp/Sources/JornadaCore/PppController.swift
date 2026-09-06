@@ -163,9 +163,35 @@ public enum PppController {
         return path
     }
 
+    // Root-owned helpers installed by `bin/jornada-setup-passwordless`. When
+    // present, they run under a NOPASSWD sudoers rule, so Connect/Disconnect
+    // never prompt. Otherwise we fall back to the one-shot admin prompt.
+    static let connectHelper = "/usr/local/libexec/jornada-link/jornada-connect"
+    static let disconnectHelper = "/usr/local/libexec/jornada-link/jornada-disconnect"
+
+    public static func passwordlessInstalled() -> Bool {
+        FileManager.default.isExecutableFile(atPath: connectHelper)
+    }
+
+    /// Try `sudo -n <helper>` (no prompt). Returns true only if it actually ran.
+    private static func runHelperNoPrompt(_ helper: String) -> Bool {
+        guard FileManager.default.isExecutableFile(atPath: helper) else { return false }
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/sudo")
+        process.arguments = ["-n", helper]
+        process.standardOutput = Pipe()
+        process.standardError = Pipe()
+        guard (try? process.run()) != nil else { return false }
+        process.waitUntilExit()
+        return process.terminationStatus == 0
+    }
+
     public static func startLink() throws {
         guard let device = serialDevice() else { throw ControlError.noSerialDevice }
         flushSerial()
+        // Preferred path: passwordless helper, no admin prompt.
+        if runHelperNoPrompt(connectHelper) { return }
+        // Fallback: generate a runner and authorize it once via the admin prompt.
         let runner = try writeRunnerScript(device: device, baud: baud())
         let launcherLog = stateDirectory().appendingPathComponent("ppp-wrapper.log").path
         let shell = "/bin/sh '\(runner)' >>'\(launcherLog)' 2>&1 & echo ok"
@@ -174,6 +200,8 @@ public enum PppController {
     }
 
     public static func stopLink() throws {
+        // Preferred path: passwordless helper, no admin prompt.
+        if runHelperNoPrompt(disconnectHelper) { return }
         let shell = "pkill -9 -f '[.]jornada-link/run-ppp[.]sh' ; " +
             "pkill -f '^(/bin/sh |sh |sudo ).*bin/jornada[-]ppp' ; sleep 1 ; " +
             "pkill -f 'pppd /dev/cu[.]usbserial' ; sleep 2 ; " +

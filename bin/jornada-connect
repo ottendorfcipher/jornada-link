@@ -1,0 +1,116 @@
+#!/bin/sh
+#
+# jornada-connect — privileged helper that brings up the Jornada PPP link.
+#
+# This is installed to a ROOT-OWNED path by `jornada-setup-passwordless` and
+# granted passwordless sudo, so it is a security boundary. Rules it must keep:
+#
+#   * It takes NO arguments (sudoers matches it argument-free).
+#   * It NEVER sources or executes anything from a user-writable location. Its
+#     only configuration is /usr/local/etc/jornada-link/config, which the
+#     installer writes root-owned; values are PARSED (not sourced) and validated.
+#   * The serial device path is validated to /dev/cu.* with no shell
+#     metacharacters before it reaches pppd.
+#
+# It starts a detached pppd retry loop (so a suspend/replug reconnects within a
+# session) and records its loop PID. `jornada-disconnect` stops it.
+set -eu
+
+LOCAL_IP=192.168.131.102
+REMOTE_IP=192.168.131.201
+DEFAULT_BAUD=115200
+CHAT_TIMEOUT=3600
+CONFIG=/usr/local/etc/jornada-link/config
+RUNDIR=/usr/local/var/run/jornada-link
+
+if [ "$(id -u)" -ne 0 ]; then
+  echo "jornada-connect: must run as root (via sudo)" >&2
+  exit 1
+fi
+
+# --- configuration (parsed, never sourced) ---------------------------------
+DEVICE=""
+BAUD="$DEFAULT_BAUD"
+if [ -r "$CONFIG" ]; then
+  DEVICE=$(sed -n 's/^DEVICE=//p' "$CONFIG" 2>/dev/null | head -1)
+  cfg_baud=$(sed -n 's/^BAUD=//p' "$CONFIG" 2>/dev/null | head -1)
+  [ -n "${cfg_baud:-}" ] && BAUD="$cfg_baud"
+fi
+
+# Auto-detect the adapter if the config did not pin one.
+if [ -z "$DEVICE" ]; then
+  DEVICE=$(ls /dev/cu.usbserial-* 2>/dev/null | head -n 1 || true)
+fi
+
+# --- validate everything before it reaches the privileged command ----------
+case "$DEVICE" in
+  /dev/cu.*) ;;
+  *) echo "jornada-connect: no valid serial device (got '${DEVICE:-none}')" >&2; exit 1;;
+esac
+case "$DEVICE" in
+  *[!/A-Za-z0-9._-]*) echo "jornada-connect: serial path has invalid characters" >&2; exit 1;;
+esac
+if [ ! -c "$DEVICE" ]; then
+  echo "jornada-connect: $DEVICE is not a character device (adapter unplugged?)" >&2
+  exit 1
+fi
+case "$BAUD" in
+  9600|19200|38400|57600|115200) ;;
+  *) echo "jornada-connect: unsupported baud '$BAUD'" >&2; exit 1;;
+esac
+
+# --- logs go to the invoking user's ~/.jornada-link, owned by them ----------
+RUN_AS="${SUDO_USER:-root}"
+USER_HOME=$(dscl . -read "/Users/$RUN_AS" NFSHomeDirectory 2>/dev/null | awk '{print $2}')
+USER_HOME="${USER_HOME:-/var/root}"
+STATE_DIR="$USER_HOME/.jornada-link"
+LOG="$STATE_DIR/ppp.log"
+REC="$STATE_DIR/ppp.record"
+mkdir -p "$STATE_DIR" 2>/dev/null || true
+: > "$REC" 2>/dev/null || true
+touch "$LOG" 2>/dev/null || true
+chown "$RUN_AS" "$STATE_DIR" "$LOG" "$REC" 2>/dev/null || true
+
+# Apple's pppd refuses to start unless /etc/ppp/options exists (may be empty).
+if [ ! -f /etc/ppp/options ]; then
+  mkdir -p /etc/ppp
+  : > /etc/ppp/options
+fi
+
+mkdir -p "$RUNDIR"
+
+# --- stop any previous instance, then start a fresh detached loop ----------
+if [ -f "$RUNDIR/loop.pid" ]; then
+  old=$(cat "$RUNDIR/loop.pid" 2>/dev/null || true)
+  [ -n "${old:-}" ] && kill "$old" 2>/dev/null || true
+fi
+pkill -f 'pppd /dev/cu[.]usbserial' 2>/dev/null || true
+sleep 1
+pkill -9 -f 'pppd /dev/cu[.]usbserial' 2>/dev/null || true
+
+echo "=== jornada-connect $(date) dev=$DEVICE baud=$BAUD ===" >> "$LOG"
+
+# Detached retry loop: a fresh pppd per connection (Apple pppd's own persist is
+# unreliable), with dead-peer detection so suspend/replug recovers.
+nohup sh -c '
+  DEVICE="'"$DEVICE"'"; BAUD="'"$BAUD"'"
+  LOCAL_IP="'"$LOCAL_IP"'"; REMOTE_IP="'"$REMOTE_IP"'"
+  LOG="'"$LOG"'"; REC="'"$REC"'"; CHAT_TIMEOUT="'"$CHAT_TIMEOUT"'"
+  while :; do
+    /usr/sbin/pppd "$DEVICE" "$BAUD" \
+      "$LOCAL_IP:$REMOTE_IP" ms-dns "$LOCAL_IP" \
+      nodetach local noauth nodefaultroute nocrtscts novj \
+      ipcp-restart 10 noacsp \
+      lcp-echo-interval 9 lcp-echo-failure 5 \
+      debug \
+      logfile "$LOG" record "$REC" \
+      connect "/usr/sbin/chat -v -s -t $CHAT_TIMEOUT CLIENT '"'"'CLIENTSERVER\c'"'"' 2>>$LOG" \
+      || true
+    echo "=== pppd exited $(date); retrying ===" >> "$LOG"
+    sleep 2
+  done
+' >>"$LOG" 2>&1 &
+
+echo $! > "$RUNDIR/loop.pid"
+echo "jornada-connect: link starting on $DEVICE @ $BAUD (loop pid $(cat "$RUNDIR/loop.pid"))"
+exit 0

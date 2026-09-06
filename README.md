@@ -113,6 +113,29 @@ client — no Python at runtime). **Connect** starts the PPP link via the system
 administrator prompt; the Files pane supports drag-and-drop from Finder,
 download, rename/delete/new-folder, and Run-on-device for `.exe`s.
 
+## Passwordless connect (optional)
+
+Bringing up PPP needs root (that's a macOS requirement for `pppd`), so by
+default Connect asks for your password. To skip the prompt from then on, run the
+one-time installer (this single step authenticates):
+
+```bash
+sudo ./bin/jornada-setup-passwordless
+```
+
+It installs two small, **root-owned, argument-free** helper scripts and a
+`sudoers` rule (`/etc/sudoers.d/jornada-link`) that grants passwordless `sudo`
+**only** for those two commands. After that, Connect in the app and
+`./bin/jornada-ppp` (no `sudo`) bring the link up with no prompt. To undo:
+
+```bash
+sudo ./bin/jornada-setup-passwordless --uninstall
+```
+
+This trades a little local security for convenience — see the
+[security note](SECURITY.md#optional-passwordless-connect) before installing it
+on a shared machine.
+
 ## How it works
 
 - **Serial handshake.** The device repeats `CLIENT`; the host answers

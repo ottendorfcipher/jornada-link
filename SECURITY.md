@@ -49,6 +49,29 @@ local:
 | **A09 Logging & Alerting** | App and dccm events are logged to `~/.jornada-link/*.log`; **passwords are never logged**. Rejected peers and password failures are logged. Raw PPP recordings (`ppp.record`) stay local and are git-ignored. |
 | **A10 Mishandling of Exceptional Conditions** | RAPI reply frames are capped (16 MB) so a hostile/buggy peer cannot drive unbounded allocation. Socket reads have timeouts; a wedged link fails fast with a clear message instead of hanging. Backup continues past individual unreadable entries and records the errors. |
 
+## Optional: passwordless connect
+
+`bin/jornada-setup-passwordless` is an **opt-in** convenience that removes the
+per-connect admin prompt. It is designed to keep the privilege it grants as
+narrow as possible:
+
+- It installs two **root-owned** helper scripts (`jornada-connect` /
+  `jornada-disconnect`) to `/usr/local/libexec/jornada-link/`, and a
+  `sudoers.d` rule granting the invoking user passwordless `sudo` for **exactly
+  those two commands** — nothing else.
+- The helpers take **no arguments** (so the rule can't be widened at the call
+  site), **never source or execute anything from a user-writable location**
+  (their only config is the root-owned `/usr/local/etc/jornada-link/config`,
+  which is parsed, not sourced), and **validate the serial device path** before
+  it reaches `pppd`.
+- The generated `sudoers` file is validated with `visudo -cf` before it is
+  installed, and removed cleanly by `--uninstall`.
+
+The trade-off: any process running as your user can now bring the PPP link up as
+root without authenticating. On a single-user machine that is a small,
+well-scoped increase in local attack surface; on a shared machine, prefer the
+default admin prompt. Installing it still requires your password once.
+
 ## Residual risks (accepted)
 
 - **No link confidentiality/authentication** beyond the CE password — inherent to

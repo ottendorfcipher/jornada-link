@@ -1,0 +1,29 @@
+#!/bin/sh
+#
+# jornada-disconnect — privileged helper that tears the Jornada PPP link down.
+#
+# Installed root-owned alongside jornada-connect and granted passwordless sudo.
+# Takes NO arguments. Stops the detached retry loop and any pppd holding the
+# serial adapter, escalating to SIGKILL (Apple pppd can ignore SIGTERM once
+# wedged).
+set -eu
+
+RUNDIR=/usr/local/var/run/jornada-link
+
+if [ "$(id -u)" -ne 0 ]; then
+  echo "jornada-disconnect: must run as root (via sudo)" >&2
+  exit 1
+fi
+
+if [ -f "$RUNDIR/loop.pid" ]; then
+  loop=$(cat "$RUNDIR/loop.pid" 2>/dev/null || true)
+  [ -n "${loop:-}" ] && kill "$loop" 2>/dev/null || true
+  rm -f "$RUNDIR/loop.pid"
+fi
+
+pkill -f 'pppd /dev/cu[.]usbserial' 2>/dev/null || true
+sleep 1
+pkill -9 -f 'pppd /dev/cu[.]usbserial' 2>/dev/null || true
+
+echo "jornada-disconnect: link stopped"
+exit 0

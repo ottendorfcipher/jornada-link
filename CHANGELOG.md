@@ -6,6 +6,16 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- **Optional passwordless connect** (`bin/jornada-setup-passwordless`): a
+  one-time installer that places two root-owned, argument-free helper scripts
+  (`jornada-connect` / `jornada-disconnect`) and a narrowly scoped `sudoers.d`
+  NOPASSWD rule, so the app's Connect and `bin/jornada-ppp` no longer prompt for
+  a password. The app and CLI prefer the helper when installed and fall back to
+  the admin prompt otherwise. `--uninstall` removes it. See
+  [`SECURITY.md`](SECURITY.md#optional-passwordless-connect) for the trade-off.
+
 ## [0.1.0] — 2026-08-24
 
 First public release. Connects a modern Mac to an HP Jornada / Windows CE 2.x

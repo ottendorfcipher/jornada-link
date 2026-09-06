@@ -21,9 +21,18 @@ CHAT_TIMEOUT=3600           # seconds to wait for CLIENT before retrying
 DCCM_PORT=5679
 
 HERE=$(cd "$(dirname "$0")/.." && pwd)
+CONNECT_HELPER=/usr/local/libexec/jornada-link/jornada-connect
 
 if [ "$(id -u)" -ne 0 ]; then
+  # Prefer the passwordless helper (installed by jornada-setup-passwordless)
+  # when no explicit device/baud was requested on the command line.
+  if [ $# -eq 0 ] && [ -x "$CONNECT_HELPER" ] && sudo -n "$CONNECT_HELPER" 2>/dev/null; then
+    echo "jornada-ppp: link started via passwordless helper — start PC Link on the Jornada."
+    echo "             logs: ~/.jornada-link/ppp.log   stop: sudo /usr/local/libexec/jornada-link/jornada-disconnect"
+    exit 0
+  fi
   echo "jornada-ppp: must run as root:  sudo $0 $*" >&2
+  echo "             (tip: run 'sudo ./bin/jornada-setup-passwordless' once for no-password connects)" >&2
   exit 1
 fi
 
