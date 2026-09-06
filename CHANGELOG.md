@@ -8,6 +8,11 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **`jornada rm -r`**: recursively delete a device directory and its contents
+  (depth-first: files, then directories leaf-up), collecting per-entry errors;
+  refuses the device root as a guardrail. Enables cleanup of restored/test trees
+  the one-file-at-a-time RAPI protocol otherwise makes tedious.
+
 - **`jornada restore`**: push a `backup` or sent-mirror tree back onto the
   device — recreates directories, skips name+size matches (`--force` overrides),
   excludes manifests and timestamped archive versions, previews with

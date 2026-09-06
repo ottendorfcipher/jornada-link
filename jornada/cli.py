@@ -159,6 +159,18 @@ def _mirror_after_send(args: argparse.Namespace, data: bytes, remote: str, sourc
 
 def cmd_rm(args: argparse.Namespace) -> int:
     with _connect(args) as client:
+        if args.recursive:
+            from .remove import remove_tree
+            try:
+                stats = remove_tree(client, args.remote)
+            except ValueError as exc:
+                sys.stderr.write(f"error: {exc}\n")
+                return 1
+            print(f"removed {stats.files_deleted} file(s), {stats.directories_deleted} "
+                  f"director(ies), {len(stats.errors)} error(s)")
+            for error in stats.errors:
+                print(f"  !! {error}")
+            return 1 if stats.errors else 0
         client.delete_file(args.remote)
     print(f"deleted {args.remote}")
     return 0
@@ -384,8 +396,10 @@ def build_parser() -> argparse.ArgumentParser:
                    help="skip the Mac-side sent-file archive")
     p.set_defaults(func=cmd_put)
 
-    p = sub.add_parser("rm", help="delete a device file")
+    p = sub.add_parser("rm", help="delete a device file (or a whole subtree with -r)")
     p.add_argument("remote")
+    p.add_argument("-r", "--recursive", action="store_true",
+                   help="recursively delete a directory and all its contents")
     p.set_defaults(func=cmd_rm)
 
     p = sub.add_parser("mkdir", help="create a device directory")

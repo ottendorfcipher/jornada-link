@@ -93,7 +93,7 @@ cd jornada-link
 | `ls PATH` | List a device directory |
 | `get REMOTE [LOCAL]` | Copy a file device → Mac |
 | `put LOCAL [REMOTE]` | Copy a file Mac → device |
-| `rm` / `mkdir` / `rmdir` / `mv` | File management |
+| `rm [-r]` / `mkdir` / `rmdir` / `mv` | File management (`rm -r` deletes a whole subtree) |
 | `run EXE [ARGS…]` | Launch a program on the device |
 | `settime` | Set the device clock from this Mac |
 | `shortcut LNK TARGET` | Create a `.lnk` on the device |

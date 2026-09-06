@@ -167,3 +167,18 @@ def test_restore_dry_run_writes_nothing(device, tmp_path, capsys):
     assert run(device, "restore", str(tree), "--dry-run") == 0
     assert device.fs.files == before
     assert "would send" in capsys.readouterr().out
+
+
+def test_rm_recursive_command(device, capsys):
+    device.fs.dirs.update({"\\Temp", "\\Temp\\Nest", "\\Temp\\Nest\\Deep"})
+    device.fs.files["\\Temp\\Nest\\x.txt"] = b"x"
+    device.fs.files["\\Temp\\Nest\\Deep\\y.bin"] = bytes(5)
+    assert run(device, "rm", "-r", "\\Temp\\Nest") == 0
+    assert not any(p.startswith("\\Temp\\Nest") for p in device.fs.files)
+    assert "\\Temp\\Nest" not in device.fs.dirs
+    assert "\\Temp" in device.fs.dirs
+    assert "removed" in capsys.readouterr().out
+
+
+def test_rm_recursive_refuses_root(device):
+    assert run(device, "rm", "-r", "\\") == 1
