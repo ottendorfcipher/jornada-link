@@ -45,10 +45,12 @@ xattr -cr "$APP" 2>/dev/null || true
 codesign --force --sign - "$APP"
 codesign --verify "$APP"
 
-TARGET="$HOME/Applications/Jornada Sync.app"
-mkdir -p "$HOME/Applications"
+# Install into the system Applications folder (writable by administrators). An
+# older per-user copy would show up twice in Launchpad, so it is removed.
+TARGET="/Applications/Jornada Sync.app"
 rm -rf "$TARGET"
 ditto "$APP" "$TARGET"
+rm -rf "$HOME/Applications/Jornada Sync.app"
 
 rm -rf "dist/Jornada Sync.app"
 ditto "$APP" "dist/Jornada Sync.app" 2>/dev/null || true
