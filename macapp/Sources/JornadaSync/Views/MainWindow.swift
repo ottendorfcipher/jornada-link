@@ -8,12 +8,18 @@ struct MainWindow: View {
             BannerView(model: model)
             Divider()
             NavigationSplitView {
-                List(AppModel.Pane.allCases, selection: paneSelection) { pane in
-                    Label(pane.rawValue, systemImage: pane.symbol)
-                        .tag(pane)
-                        .badge(pane == .transfers
-                               ? model.transfers.filter { $0.state == .running }.count
-                               : 0)
+                List(selection: paneSelection) {
+                    ForEach(AppModel.Pane.allCases) { pane in
+                        Label(pane.rawValue, systemImage: pane.symbol)
+                            .badge(pane == .transfers
+                                   ? model.transfers.filter { $0.state == .running }.count
+                                   : 0)
+                            // .tag must be the OUTERMOST modifier: applied before
+                            // .badge, the badge wrapper can hide the tag from the
+                            // List selection machinery on macOS and clicks go dead.
+                            .tag(pane)
+                            .accessibilityIdentifier("sidebar-\(pane.rawValue)")
+                    }
                 }
                 .listStyle(.sidebar)
                 .navigationSplitViewColumnWidth(min: 170, ideal: 185, max: 240)

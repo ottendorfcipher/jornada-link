@@ -3,7 +3,7 @@
 [![CI](https://github.com/ottendorfcipher/jornada-link/actions/workflows/ci.yml/badge.svg)](https://github.com/ottendorfcipher/jornada-link/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-informational.svg)](LICENSE)
 [![Python 3.9+](https://img.shields.io/badge/python-3.9%2B-blue.svg)](https://www.python.org/)
-[![macOS 14+](https://img.shields.io/badge/macOS-14%2B-black.svg)](https://www.apple.com/macos/)
+[![macOS 15+](https://img.shields.io/badge/macOS-15%2B-black.svg)](https://www.apple.com/macos/)
 
 Talk to a **vintage HP Jornada / Windows CE 2.x handheld** from a modern Mac
 over a USB-serial (FTDI) cable — list files, copy in both directions, make
@@ -32,7 +32,7 @@ should work; reports welcome.
 
 ## Requirements
 
-- A Mac (macOS 14+) with an FTDI USB-serial adapter and the appropriate HP
+- A Mac (macOS 15+) with an FTDI USB-serial adapter and the appropriate HP
   serial sync cable.
 - Python 3.9+ for the CLI (uses only the standard library).
 - Xcode 16 / Swift 6 toolchain to build the app (optional).

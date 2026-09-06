@@ -36,7 +36,7 @@ python3 -m pytest -q tests          # run the whole suite
 python3 -m pytest -q tests/test_rapi.py::test_download_small_and_chunked
 ```
 
-Swift side (macOS 14+, Swift 6 toolchain):
+Swift side (macOS 15+, Swift 6 toolchain):
 
 ```bash
 cd macapp

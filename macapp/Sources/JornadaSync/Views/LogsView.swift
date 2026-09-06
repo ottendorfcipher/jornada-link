@@ -33,6 +33,8 @@ struct LogsView: View {
                     NSPasteboard.general.setString(model.logLines.joined(separator: "\n"),
                                                    forType: .string)
                 }
+                Button("Clear") { model.logLines.removeAll() }
+                    .disabled(model.logLines.isEmpty)
             }
         }
     }

@@ -271,6 +271,14 @@ final class AppModel: ObservableObject {
         }
     }
 
+    /// User-driven refresh: lifts the per-session give-up latch and re-runs the
+    /// full sync. Wired to ⌘R, the Overview refresh button, and "Try Again".
+    func retrySync() {
+        syncGaveUp = false
+        lastError = nil
+        Task { await initialSync() }
+    }
+
     func setDeviceClock() {
         Task {
             do {

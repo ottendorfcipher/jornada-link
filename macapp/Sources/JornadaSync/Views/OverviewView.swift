@@ -16,6 +16,17 @@ struct OverviewView: View {
             .frame(maxWidth: 640)
             .frame(maxWidth: .infinity)
         }
+        .toolbar {
+            ToolbarItem {
+                Button {
+                    model.retrySync()
+                } label: {
+                    Label("Refresh", systemImage: "arrow.clockwise")
+                }
+                .disabled(model.phase != .connected)
+                .help("Re-read device info and the current folder")
+            }
+        }
     }
 
     private var connectCard: some View {
@@ -127,6 +138,10 @@ struct OverviewView: View {
             Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.yellow)
             Text(text).font(.callout)
             Spacer()
+            if model.phase == .connected {
+                Button("Try Again") { model.retrySync() }
+                    .buttonStyle(.link)
+            }
             Button("Dismiss") { model.lastError = nil }
                 .buttonStyle(.link)
         }

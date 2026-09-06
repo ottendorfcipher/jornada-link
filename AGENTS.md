@@ -25,7 +25,7 @@ python3 -m pytest -q tests
 # a single test
 python3 -m pytest -q tests/test_rapi.py::test_upload_roundtrip_with_progress
 
-# Swift (macOS 14+, Swift 6)
+# Swift (macOS 15+, Swift 6)
 cd macapp && swift build
 cd macapp && swift build --product SelfTest      # protocol self-test
 cd macapp && ./build.sh                           # build+sign the .app

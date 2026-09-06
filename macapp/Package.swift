@@ -3,7 +3,7 @@ import PackageDescription
 
 let package = Package(
     name: "JornadaSync",
-    platforms: [.macOS(.v14)],
+    platforms: [.macOS("15.0")],
     products: [
         .executable(name: "JornadaSync", targets: ["JornadaSync"]),
         .executable(name: "IconGen", targets: ["IconGen"]),

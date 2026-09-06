@@ -118,6 +118,12 @@ struct FilesView: View {
                 if entry.isDirectory { model.enter(entry) } else { saveAs(entry) }
             }
         }
+        .onDeleteCommand {
+            let selected = model.entries.filter { selection.contains($0.id) }
+            guard !selected.isEmpty else { return }
+            selected.forEach { model.delete($0) }
+            selection.removeAll()
+        }
         .overlay {
             if model.entries.isEmpty && !model.listingBusy {
                 ContentUnavailableView(
