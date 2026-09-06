@@ -273,6 +273,85 @@ def cmd_probe(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_gpib(args: argparse.Namespace) -> int:
+    from .gpib import GATEWAY_PORT, GatewayAddress, GpibError, GpibGateway
+
+    address = GatewayAddress(_device_ip(args), args.gateway_port or GATEWAY_PORT)
+    pad = args.address
+    try:
+        with GpibGateway(address, timeout=args.timeout) as gw:
+            action = args.action
+            if action == "ver":
+                print(gw.version())
+            elif action == "idn":
+                print(gw.query(pad, "*IDN?"))
+            elif action == "query":
+                print(gw.query(pad, " ".join(args.text)))
+            elif action == "write":
+                gw.write(pad, " ".join(args.text))
+            elif action == "read":
+                print(gw.read(pad))
+            elif action == "spoll":
+                stb = gw.serial_poll(pad)
+                print(f"status byte 0x{stb:02x} ({stb}){' requesting service' if stb & 0x40 else ''}")
+            elif action == "ifc":
+                gw.interface_clear()
+            elif action == "clear":
+                gw.device_clear(pad)
+            elif action == "trigger":
+                gw.trigger(pad)
+            elif action == "local":
+                gw.local(pad)
+            elif action == "quit":
+                gw.quit_gateway()
+            elif action == "repl":
+                _gpib_repl(gw, pad)
+            else:
+                raise SystemExit(f"unknown gpib action {action}")
+    except GpibError as exc:
+        sys.stderr.write(f"error: {exc}\n")
+        return 1
+    return 0
+
+
+_GPIB_QUERY_COMMANDS = {"ver", "spoll", "srq", "lines", "help", "read"}
+_GPIB_SETTINGS = {"addr", "auto", "eoi", "eos", "read_tmo_ms", "mode"}
+
+
+def _gpib_replies(line: str) -> bool:
+    """True when a ++ command produces an answer (queries, or settings asked without a value)."""
+    words = line[2:].split()
+    if not words:
+        return False
+    return words[0] in _GPIB_QUERY_COMMANDS or (words[0] in _GPIB_SETTINGS and len(words) == 1)
+
+
+def _gpib_repl(gw, pad: int) -> None:
+    print(f"GPIB address {pad}; lines ending in ? are queried, others written; ++ lines go to the gateway; ^D ends")
+    while True:
+        try:
+            line = input("gpib> ").strip()
+        except EOFError:
+            print()
+            return
+        if not line:
+            continue
+        if line.startswith("++"):
+            gw.send_line(line)
+            if _gpib_replies(line):
+                try:
+                    print(gw.read_line())
+                except GpibError as exc:
+                    print(f"({exc})")
+        elif line.endswith("?"):
+            try:
+                print(gw.query(pad, line))
+            except GpibError as exc:
+                print(f"({exc})")
+        else:
+            gw.write(pad, line)
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="jornada", description="Talk to an HP Jornada / Windows CE 2.x over serial PPP")
     parser.add_argument("--version", action="version", version=f"jornada-link {__version__}")
@@ -357,6 +436,14 @@ def build_parser() -> argparse.ArgumentParser:
     p = sub.add_parser("ppplog", help="decode the pppd record file into readable PPP frames")
     p.add_argument("record", nargs="?", help="default: ~/.jornada-link/ppp.record")
     p.set_defaults(func=cmd_ppplog)
+
+    p = sub.add_parser("gpib", help="talk to an instrument through the jornada-gpib gateway on the device")
+    p.add_argument("action", choices=["ver", "idn", "query", "write", "read", "spoll", "ifc", "clear", "trigger", "local", "repl", "quit"])
+    p.add_argument("text", nargs="*", help="instrument command for query/write")
+    p.add_argument("-a", "--address", type=int, default=1, help="GPIB primary address (default 1)")
+    p.add_argument("--timeout", type=float, default=5.0, help="seconds to wait for an answer")
+    p.add_argument("--gateway-port", type=int, default=None, help=argparse.SUPPRESS)
+    p.set_defaults(func=cmd_gpib)
 
     p = sub.add_parser("probe", help="sniff the serial line (no root needed)")
     p.add_argument("device")
