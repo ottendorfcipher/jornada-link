@@ -92,7 +92,7 @@ final class AppModel: ObservableObject {
             log("device connected: \(info.name) (\(info.hardware), \(info.osText)) at \(info.ip)")
             rapi.configure(host: info.ip, password: devicePassword.isEmpty ? nil : devicePassword,
                            passwordKey: info.passwordKey ?? 0)
-            Task { await refreshDeviceInfo(); await loadDirectory(currentPath) }
+            Task { await initialSync() }
         case .deviceDisconnected(let ip):
             log("device at \(ip) disconnected")
             device = nil
@@ -130,6 +130,11 @@ final class AppModel: ObservableObject {
                 listener = nil
                 startListener()
             }
+        }
+        // Safety net: connected to a device but the listing is empty (a missed or
+        // failed initial fetch) — resync. initialSync() is idempotent.
+        if phase == .connected, device != nil, entries.isEmpty, !listingBusy, !isSyncing {
+            Task { await initialSync() }
         }
     }
 
@@ -199,7 +204,33 @@ final class AppModel: ObservableObject {
     }
 
     // Device info -------------------------------------------------------------
-    func refreshDeviceInfo() async {
+    /// Fetch device info + the current directory right after a connection, with
+    /// retries: the Jornada's RAPI service (port 990) is often not ready the
+    /// instant the dccm handshake completes, and the link may still be settling
+    /// after an auto-reconnect. Without this, a transient first-call failure
+    /// left the UI connected-but-blank.
+    private var isSyncing = false
+    func initialSync() async {
+        guard !isSyncing else { return }
+        isSyncing = true
+        defer { isSyncing = false }
+        for attempt in 1...6 {
+            let infoOK = await refreshDeviceInfo()
+            let filesOK = await loadDirectory(currentPath)
+            if infoOK && filesOK {
+                lastError = nil
+                return
+            }
+            if device == nil { return }   // device went away; stop retrying
+            if attempt < 6 {
+                log("device not ready yet — retrying (\(attempt)/6)…")
+                try? await Task.sleep(nanoseconds: 1_500_000_000)
+            }
+        }
+    }
+
+    @discardableResult
+    func refreshDeviceInfo() async -> Bool {
         do {
             let version = try await rapi.run("version") { try $0.version() }
             osVersionText = "Windows CE \(version.major).\(String(format: "%02d", version.minor)) (build \(version.build))"
@@ -216,8 +247,10 @@ final class AppModel: ObservableObject {
                 batteryPercent = nil
                 batteryText = onACPower ? "on AC power" : "unknown"
             }
+            return true
         } catch {
             explainRapiFailure(error, context: "device info")
+            return false
         }
     }
 
@@ -233,7 +266,8 @@ final class AppModel: ObservableObject {
     }
 
     // Files -------------------------------------------------------------------
-    func loadDirectory(_ path: String) async {
+    @discardableResult
+    func loadDirectory(_ path: String) async -> Bool {
         listingBusy = true
         defer { listingBusy = false }
         do {
@@ -244,8 +278,10 @@ final class AppModel: ObservableObject {
                 return $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending
             }
             lastError = nil
+            return true
         } catch {
             explainRapiFailure(error, context: "list \(path)")
+            return false
         }
     }
 
