@@ -26,6 +26,7 @@ struct MainWindow: View {
             } detail: {
                 switch model.pane {
                 case .overview: OverviewView(model: model)
+                case .sync: SyncView(model: model, sync: model.sync)
                 case .files: FilesView(model: model)
                 case .transfers: TransfersView(model: model)
                 case .usb: UsbView(model: model)

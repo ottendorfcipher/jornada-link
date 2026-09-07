@@ -104,7 +104,34 @@ cd jornada-link
 | `install CAB` | Copy a `.cab` and launch the device installer (`wceload`) |
 | `probe DEVICE [BAUD] [SECONDS]` | Sniff the serial line (no root) |
 | `usb [pick\|pin PATH\|unpin]` | USB/Serial link status, auto-detected: the adapter and port carrying the link (`pick` for scripts, `pin` to override) |
+| `db ls\|dump NAME\|snapshot NAME\|restore FILE` | Object-store databases: list, decode Pocket Outlook records, JSON snapshot and restore |
+| `sync modules\|account …\|run NAME\|status NAME` | Two-way sync with modern apps and services — see [`docs/sync.md`](docs/sync.md) |
 | `ppplog [FILE]` | Decode a `pppd` record file into readable PPP frames |
+
+## Sync with modern apps
+
+`jornada sync` (and the app's **Sync** pane) does what ActiveSync's sync
+services did, with the Mac bridging everything the handheld cannot do itself:
+
+- **Calendar, Contacts, Tasks** (Pocket Outlook) ⇄ Apple Calendar / Contacts /
+  Reminders, Google, Microsoft 365, any CalDAV / CardDAV server, todo.txt.
+- **Mail**: a POP3/SMTP bridge on the PPP link so the device's own Inbox works
+  with IMAP accounts, Gmail, Microsoft 365 and Apple Mail.
+- **Notes** (`.txt` on the device) ⇄ Apple Notes, Logseq, Bear.
+- **Documents and spreadsheets** ⇄ Word / Excel on OneDrive, Google Docs /
+  Sheets, Pages / Numbers; SQLite tables ⇄ Pocket Access.
+
+```bash
+./bin/jornada db ls                                          # what the object store holds
+./bin/jornada sync account add home --module calendar --backend apple
+./bin/jornada sync run home --dry-run                        # the plan, nothing written
+./bin/jornada sync run home
+```
+
+A JSON snapshot of a device database is written before the first change of a
+session, and `--direction from-device` keeps a run read-only on the handheld.
+Set-up per backend, the wire-format caveats, and how to verify the record
+layouts on your own device: [`docs/sync.md`](docs/sync.md).
 
 ## USB, the dock, and the 680e
 

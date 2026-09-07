@@ -60,6 +60,32 @@ against `tests/fake_device.py`.
   `refactor:`, `test:`, `chore:`). Update `CHANGELOG.md` `[Unreleased]` for
   user-visible changes.
 
+## Map of the sync feature
+
+- `jornada/cedb.py`, `jornada/rapi_database.py` (+ `macapp/Sources/JornadaCore/Cedb.swift`,
+  `RapiClient+Database.swift`) — object-store database calls and the CEPROPVAL
+  record codec. Wire format = librapi2 0.9.x `database.c`; change both languages
+  together and extend `tests/fake_cedb.py` + the Swift `SelfTest rapi`/`cedb` cases.
+- `jornada/pim/` — Pocket Outlook record layouts (`ids.py` from SynCE's librra),
+  the neutral records (`models.py`), codecs (`appointments.py`, `contacts.py`,
+  `tasks.py`), the device stores (`store.py` for databases, `filestore.py` for
+  folders of files). Time convention: device FILETIMEs are naive local wall-clock
+  (`timeconv.py`).
+- `jornada/sync/` — the engine (`engine.py`: pure `plan`, then `apply`), state
+  and account stores, the module registry (`registry.py`: a module package
+  exposes `MODULE: ModuleSpec`), and one package per module (`calendar`,
+  `contacts`, `tasks`, `mail`, `notes`, `documents`), each with one backend per
+  service. Backends implement the `Store` protocol of `jornada/sync/base.py`;
+  the mail module is a bridge instead.
+- `jornada/webapi/` — the modern side: HTTP client with injectable transport,
+  OAuth PKCE, CalDAV/CardDAV, iCalendar, vCard, AppleScript/JXA runner. Tests
+  never touch the network: use `fake_transport`, `fake_runner`, or an in-process
+  `http.server`.
+- Rules specific to sync code: never log or store secrets outside
+  `jornada/sync/accounts.py`'s secret files; every device write goes through a
+  store that snapshots first; recurring appointments are read-only; new backends
+  need a `BackendSpec` with `SettingSpec`s and tests against fakes.
+
 ## Security boundaries — read before editing these
 
 Anything crossing a trust boundary must be validated. In particular:

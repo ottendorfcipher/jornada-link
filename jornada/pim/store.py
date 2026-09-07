@@ -78,9 +78,10 @@ class DeviceStore:
             try:
                 model = self._codec.decode(record)
             except (ValueError, TypeError, OverflowError) as exc:
-                self._log(f"skipping record 0x{record.oid:08x}: {exc}")
+                self._log(f"record 0x{record.oid:08x} cannot be decoded ({exc}); it is left alone")
+                items.append(Item(id=str(record.oid), record=None, problem=str(exc)))
                 continue
-            items.append(Item(id=str(record.oid), record=model))
+            items.append(Item(id=str(record.oid), record=model, read_only=self._codec.read_only(model)))
         return tuple(items)
 
     def create(self, record: Any) -> str:
@@ -96,7 +97,7 @@ class DeviceStore:
     def update(self, item_id: str, record: Any) -> Optional[str]:
         oid = int(item_id)
         existing = self._raw.get(oid)
-        if existing is not None and self._codec.read_only(self._codec.decode(existing)):
+        if existing is not None and self._is_read_only(existing):
             raise StoreError(f"record 0x{oid:08x} is recurring; the device copy is left unchanged")
         self._ensure_snapshot()
         handle = self._open()
@@ -108,6 +109,9 @@ class DeviceStore:
 
     def delete(self, item_id: str) -> None:
         oid = int(item_id)
+        existing = self._raw.get(oid)
+        if existing is not None and self._is_read_only(existing):
+            raise StoreError(f"record 0x{oid:08x} is recurring; the device copy is left unchanged")
         self._ensure_snapshot()
         handle = self._open()
         try:
@@ -115,6 +119,12 @@ class DeviceStore:
         finally:
             self._client.close_handle(handle)
         self._raw.pop(oid, None)
+
+    def _is_read_only(self, existing: Record) -> bool:
+        try:
+            return self._codec.read_only(self._codec.decode(existing))
+        except (ValueError, TypeError, OverflowError):
+            return True   # a record that cannot be decoded is never rewritten or deleted
 
     # -- safety net -----------------------------------------------------------
     def _ensure_snapshot(self) -> None:
@@ -133,7 +143,7 @@ class DeviceStore:
                    "records": [r.to_json() for r in records]}
         tmp = target.with_suffix(".json.tmp")
         with open(tmp, "w", encoding="utf-8") as handle:
-            json.dump(payload, handle, indent=1, ensure_ascii=False)
+            json.dump(payload, handle, indent=1, ensure_ascii=False, default=_json_fallback)
         os.replace(tmp, target)
         self._log(f"snapshot of {self._codec.database!r} ({len(records)} records) → {target}")
         return target
@@ -152,7 +162,9 @@ def restore_snapshot(client: RapiClient, path: Path, log: Callable[[str], None] 
     count = 0
     try:
         for entry in payload["records"]:
-            props = tuple(_prop_from_json(p, kinds) for p in entry["props"])
+            props = tuple(p for p in (_prop_from_json(item, kinds) for item in entry["props"]) if p is not None)
+            if not props:
+                continue
             client.write_record(handle_id, props)
             count += 1
     finally:
@@ -161,9 +173,22 @@ def restore_snapshot(client: RapiClient, path: Path, log: Callable[[str], None] 
     return count
 
 
-def _prop_from_json(data: Dict[str, Any], kinds: Dict[str, int]) -> PropVal:
-    kind = kinds.get(data["kind"])
+def _json_fallback(value: Any) -> Any:
+    return value.hex() if isinstance(value, (bytes, bytearray)) else str(value)
+
+
+def _prop_from_json(data: Dict[str, Any], kinds: Dict[str, int]) -> Optional[PropVal]:
+    """A property from a snapshot entry; None for entries the device reported as not found."""
+    from ..cedb import CEDB_PROPNOTFOUND
+    flags = int(data.get("flags", 0))
+    if flags & CEDB_PROPNOTFOUND or data.get("value") is None:
+        return None
+    kind_name = str(data["kind"])
+    kind = kinds.get(kind_name)
+    if kind is None and kind_name.startswith("0x"):
+        kind = int(kind_name, 16)
     if kind is None:
-        raise StoreError(f"cannot restore a property of type {data['kind']!r}")
-    value = bytes.fromhex(data["value"]) if data["kind"] == "blob" else data["value"]
-    return PropVal(int(data["id"]), kind, value, int(data.get("flags", 0)))
+        raise StoreError(f"cannot restore a property of type {kind_name!r}")
+    raw_kinds = (kind_name == "blob" or kind_name.startswith("0x"))
+    value = bytes.fromhex(data["value"]) if raw_kinds else data["value"]
+    return PropVal(int(data["id"]), kind, value, flags)
