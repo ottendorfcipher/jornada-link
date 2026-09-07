@@ -341,12 +341,47 @@ final class AppModel: ObservableObject {
     }
 
     // Transfers ---------------------------------------------------------------
-    func upload(urls: [URL]) {
-        for url in urls { uploadOne(url) }
+    /// Copy Mac files to the device. `directory` defaults to the folder being
+    /// browsed; a drop onto a folder row passes that folder instead.
+    func upload(urls: [URL], into directory: String? = nil) {
+        let target = directory ?? currentPath
+        for url in urls { uploadOne(url, into: target) }
     }
 
-    private func uploadOne(_ url: URL) {
-        let destination = Self.join(currentPath, url.lastPathComponent)
+    /// Move device entries (dragged from the listing of `directory`) into
+    /// `target` on the device, then refresh so the browser reflects it.
+    func move(names: [String], from directory: String, into target: String) {
+        guard target != directory else { return }   // dropped where it already lives
+        let plan = names.compactMap { name -> (from: String, to: String)? in
+            let source = Self.join(directory, name)
+            let isFolder = entries.first { $0.name == name }?.isDirectory ?? false
+            if isFolder && (target == source || target.hasPrefix(source + "\\")) {
+                log("cannot move \(name) into itself")
+                return nil
+            }
+            return (source, Self.join(target, name))
+        }
+        guard !plan.isEmpty else { return }
+        Task {
+            var failures: [String] = []
+            for step in plan {
+                do {
+                    try await rapi.run("mv") { try $0.moveFile(from: step.from, to: step.to) }
+                    log("moved \(step.from) → \(step.to)")
+                } catch {
+                    failures.append("\(step.from): \(error)")
+                    log("move failed \(step.from): \(error)")
+                }
+            }
+            if !failures.isEmpty {
+                lastError = "Could not move \(failures.count) item(s) — " + failures.joined(separator: "; ")
+            }
+            await loadDirectory(currentPath)
+        }
+    }
+
+    private func uploadOne(_ url: URL, into directory: String) {
+        let destination = Self.join(directory, url.lastPathComponent)
         guard let data = try? Data(contentsOf: url) else {
             log("cannot read \(url.path)")
             return

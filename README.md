@@ -128,8 +128,10 @@ macapp/build.sh          # builds + signs "Jornada Sync.app" into ~/Applications
 
 The app runs the protocol natively (Swift ports of the dccm listener and RAPI
 client — no Python at runtime). **Connect** starts the PPP link via the system
-administrator prompt; the Files pane supports drag-and-drop from Finder,
-download, rename/delete/new-folder, and Run-on-device for `.exe`s.
+administrator prompt; the Files pane supports drag-and-drop from Finder (onto
+the folder being browsed, or onto any folder row to put files inside it),
+dragging device files between folders to move them, download,
+rename/delete/new-folder, and Run-on-device for `.exe`s.
 
 ## The sent-file archive
 

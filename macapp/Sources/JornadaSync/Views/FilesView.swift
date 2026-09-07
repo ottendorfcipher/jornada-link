@@ -12,6 +12,7 @@ struct FilesView: View {
     @State private var showingNewFolder = false
     @State private var renameTarget: RapiClient.FileEntry?
     @State private var renameText = ""
+    @State private var dropTargetName: String?
 
     var body: some View {
         VStack(spacing: 0) {
@@ -43,11 +44,28 @@ struct FilesView: View {
             }
             Button("Cancel", role: .cancel) { renameTarget = nil }
         }
-        .dropDestination(for: URL.self) { urls, _ in
-            guard model.phase == .connected else { return false }
-            model.upload(urls: urls)
-            return true
+        .dropDestination(for: FilesDrop.self) { items, _ in
+            handleDrop(items, into: nil)
         }
+    }
+
+    /// One handler for every drop: Finder files upload into the folder, device
+    /// entries move into it. `folder == nil` means the folder being browsed.
+    private func handleDrop(_ items: [FilesDrop], into folder: RapiClient.FileEntry?) -> Bool {
+        guard model.phase == .connected else { return false }
+        let target = folder.map { AppModel.join(model.currentPath, $0.name) } ?? model.currentPath
+        let (files, drags) = FilesDrop.split(items)
+        if !files.isEmpty { model.upload(urls: files, into: target) }
+        for drag in drags { model.move(names: drag.names, from: drag.directory, into: target) }
+        return !files.isEmpty || !drags.isEmpty
+    }
+
+    /// Dragging a selected row drags the whole selection; otherwise just that row.
+    private func dragPayload(for entry: RapiClient.FileEntry) -> DeviceItemDrag {
+        let names = selection.contains(entry.id)
+            ? model.entries.filter { selection.contains($0.id) }.map(\.name)
+            : [entry.name]
+        return DeviceItemDrag(directory: model.currentPath, names: names)
     }
 
     private var pathBar: some View {
@@ -82,19 +100,7 @@ struct FilesView: View {
     private var table: some View {
         Table(model.entries, selection: $selection) {
             TableColumn("Name") { entry in
-                HStack(spacing: 7) {
-                    Image(systemName: entry.isDirectory ? "folder.fill"
-                          : entry.name.lowercased().hasSuffix(".exe") ? "gearshape.fill"
-                          : "doc")
-                        .foregroundStyle(entry.isDirectory
-                                         ? Color(red: 0.20, green: 0.58, blue: 0.38) : .secondary)
-                    Text(entry.name)
-                    if entry.isInRom {
-                        Text("ROM").font(.system(size: 9, weight: .bold))
-                            .padding(.horizontal, 4).padding(.vertical, 1)
-                            .background(.quaternary, in: Capsule())
-                    }
-                }
+                nameCell(entry)
             }
             .width(min: 220)
             TableColumn("Size") { entry in
@@ -130,11 +136,43 @@ struct FilesView: View {
                     model.phase == .connected ? "Empty Folder" : "Not Connected",
                     systemImage: model.phase == .connected ? "folder" : "cable.connector.slash",
                     description: Text(model.phase == .connected
-                                      ? "Drop files here to copy them to the Jornada."
+                                      ? "Drop files here to copy them to the Jornada — or onto a folder to put them inside it."
                                       : "Connect the device to browse its files.")
                 )
             }
         }
+    }
+
+    private func nameCell(_ entry: RapiClient.FileEntry) -> some View {
+        let targeted = entry.isDirectory && dropTargetName == entry.name
+        return HStack(spacing: 7) {
+            Image(systemName: entry.isDirectory ? "folder.fill"
+                  : entry.name.lowercased().hasSuffix(".exe") ? "gearshape.fill"
+                  : "doc")
+                .foregroundStyle(entry.isDirectory
+                                 ? Color(red: 0.20, green: 0.58, blue: 0.38) : .secondary)
+            Text(entry.name)
+            if entry.isInRom {
+                Text("ROM").font(.system(size: 9, weight: .bold))
+                    .padding(.horizontal, 4).padding(.vertical, 1)
+                    .background(.quaternary, in: Capsule())
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .contentShape(Rectangle())
+        .padding(.vertical, 2)
+        .background(targeted ? Color.accentColor.opacity(0.18) : Color.clear,
+                    in: RoundedRectangle(cornerRadius: 5, style: .continuous))
+        .draggable(dragPayload(for: entry))
+        .dropDestination(for: FilesDrop.self, action: { items, _ in
+            // Only folders accept drops; a drop on a file falls through to the
+            // table, which lands it in the folder being browsed.
+            guard entry.isDirectory else { return false }
+            return handleDrop(items, into: entry)
+        }, isTargeted: { inside in
+            guard entry.isDirectory else { return }
+            dropTargetName = inside ? entry.name : (dropTargetName == entry.name ? nil : dropTargetName)
+        })
     }
 
     @ViewBuilder

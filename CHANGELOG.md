@@ -6,6 +6,16 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- **Drag-and-drop into folders** in the app's Files pane: drop Finder files
+  onto a folder row to upload them *into* that folder (dropping on blank space
+  still targets the folder being browsed), and drag device files or folders
+  onto another folder to move them on the Jornada. Folder rows highlight while
+  targeted, a selected row drags the whole selection, moving a folder into
+  itself is refused, and every operation refreshes the listing so the app
+  reflects the device immediately.
+
 ### Changed
 
 - **USB pane condensed to "USB/Serial"** — one status card (adapter, port,
