@@ -67,17 +67,20 @@ public enum ContactCodec {
         let emails = item.emails.prefix(3) + Array(repeating: "", count: 3)
         let assigned = phoneSlots(item.phones)
         let byKind = Dictionary(item.addresses.map { ($0.kind, $0) }, uniquingKeysWith: { _, last in last })
-        let props = textFields(of: item).flatMap { put($0.propId, $0.value) }
-            + put(PimIds.contactFullName, item.displayName())
-            + zip(PimIds.contactEmailSlots, emails).flatMap { put($0, $1) }
-            + PimIds.contactPhoneSlots.flatMap { put($0.propId, assigned[$0.kind] ?? "") }
-            + PimIds.contactAddressSlots.flatMap { slot in
-                zip(slot.propIds, (byKind[slot.kind] ?? Address(kind: slot.kind)).parts).flatMap { put($0, $1) }
-            }
-            + PimCodecSupport.dateProps(PimIds.contactBirthday, item.birthday, existing: existing)
-            + PimCodecSupport.dateProps(PimIds.contactAnniversary, item.anniversary, existing: existing)
-            + PimCodecSupport.notesProps(PimIds.contactNote, item.notes, existing: existing)
-            + PimCodecSupport.categoriesProps(item.categories, existing: existing)
+        // Built up step by step: one long `+` chain is too much for older compilers to type-check.
+        var props: [PropVal] = []
+        for field in textFields(of: item) { props += put(field.propId, field.value) }
+        props += put(PimIds.contactFullName, item.displayName())
+        for (slot, email) in zip(PimIds.contactEmailSlots, emails) { props += put(slot, email) }
+        for slot in PimIds.contactPhoneSlots { props += put(slot.propId, assigned[slot.kind] ?? "") }
+        for slot in PimIds.contactAddressSlots {
+            let address = byKind[slot.kind] ?? Address(kind: slot.kind)
+            for (propId, value) in zip(slot.propIds, address.parts) { props += put(propId, value) }
+        }
+        props += PimCodecSupport.dateProps(PimIds.contactBirthday, item.birthday, existing: existing)
+        props += PimCodecSupport.dateProps(PimIds.contactAnniversary, item.anniversary, existing: existing)
+        props += PimCodecSupport.notesProps(PimIds.contactNote, item.notes, existing: existing)
+        props += PimCodecSupport.categoriesProps(item.categories, existing: existing)
         return props.isEmpty ? [.string(PimIds.contactFullName, "(unnamed)")] : props
     }
 
