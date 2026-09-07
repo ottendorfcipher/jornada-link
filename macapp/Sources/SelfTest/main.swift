@@ -7,15 +7,17 @@ import JornadaCore
 ///   SelfTest rapi <port>
 ///   SelfTest dccm <port>     (listens; exits 0 once a device handshakes + 2 pings)
 ///   SelfTest cedb x          (CEDB record codec against tests/test_cedb.py; no network)
+///   SelfTest pim <port>      (PIM codecs + DeviceStore against tests/serve_fake.py; see PimChecks.swift)
+///   SelfTest engine x        (sync engine against tests/test_sync_engine.py; no network; see EngineChecks.swift)
 let arguments = CommandLine.arguments
 guard arguments.count >= 3 else {
     FileHandle.standardError.write(
-        Data("usage: SelfTest rapi <port> | dccm <port> | gpib <port> | cedb x | mirror <dir> | runner <n> | usb-profiles <file> | usb <n>\n".utf8))
+        Data("usage: SelfTest rapi <port> | dccm <port> | gpib <port> | pim <port> | cedb x | engine x | mirror <dir> | runner <n> | usb-profiles <file> | usb <n>\n".utf8))
     exit(2)
 }
 // rapi/dccm need a TCP port; mirror/runner take a path or placeholder instead.
 let port = UInt16(arguments[2]) ?? 0
-if ["rapi", "dccm", "gpib"].contains(arguments[1]) && port == 0 {
+if ["rapi", "dccm", "gpib", "pim"].contains(arguments[1]) && port == 0 {
     FileHandle.standardError.write(Data("usage: SelfTest rapi|dccm <port>\n".utf8))
     exit(2)
 }
@@ -302,6 +304,21 @@ case "cedb":
     } catch {
         check("unexpected error: \(error)", false)
     }
+
+case "pim":
+    // Pocket Outlook codecs and the device store against the seeded fake device.
+    let client = RapiClient(host: "127.0.0.1", port: port, timeout: 10)
+    do {
+        try client.connect()
+        try pimChecks(client)
+    } catch {
+        check("unexpected error: \(error)", false)
+    }
+    client.close()
+
+case "engine":
+    // Sync engine scenarios from tests/test_sync_engine.py with in-memory stores (no network).
+    engineChecks()
 
 case "mirror":
     // Cross-language parity: write a mirror tree that the Python

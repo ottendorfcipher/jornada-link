@@ -37,6 +37,9 @@ cat > "$APP/Contents/Info.plist" <<'PLIST'
     <key>LSMinimumSystemVersion</key><string>14.0</string>
     <key>NSHumanReadableCopyright</key><string>Talks to an HP Jornada / Windows CE 2.x handheld over serial PPP.</string>
     <key>NSHighResolutionCapable</key><true/>
+    <key>NSCalendarsFullAccessUsageDescription</key><string>Jornada Sync needs Calendar access to sync appointments with the Jornada.</string>
+    <key>NSRemindersFullAccessUsageDescription</key><string>Jornada Sync needs Reminders access to sync tasks with the Jornada.</string>
+    <key>NSContactsUsageDescription</key><string>Jornada Sync needs Contacts access to sync contacts with the Jornada.</string>
 </dict>
 </plist>
 PLIST

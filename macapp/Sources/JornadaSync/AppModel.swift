@@ -6,6 +6,7 @@ import SwiftUI
 final class AppModel: ObservableObject {
     enum Pane: String, CaseIterable, Identifiable {
         case overview = "Overview"
+        case sync = "Sync"
         case files = "Files"
         case transfers = "Transfers"
         case usb = "USB/Serial"
@@ -15,6 +16,7 @@ final class AppModel: ObservableObject {
         var symbol: String {
             switch self {
             case .overview: return "arrow.triangle.2.circlepath"
+            case .sync: return "arrow.2.squarepath"
             case .files: return "folder"
             case .transfers: return "arrow.up.arrow.down.circle"
             case .usb: return "cable.connector"
@@ -55,6 +57,8 @@ final class AppModel: ObservableObject {
     @Published var devicePassword = ""
 
     let rapi = RapiService()
+    /// The Sync pane's controller; created on first use, logs into this model's log.
+    private(set) lazy var sync = SyncModel(rapi: rapi, log: { [weak self] line in self?.log(line) })
     private var listener: DccmListener?
     private var pollTimer: Timer?
     private var pollCount = 0
