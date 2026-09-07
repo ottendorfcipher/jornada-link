@@ -80,7 +80,7 @@ def test_create_update_and_delete():
         ("PUT", VALUES.format("s9")): json_response(200, {"updatedCells": 4}),
         ("POST", VALUES.format("s1") + ":clear"): json_response(200, {}),
         ("PUT", VALUES.format("s1")): json_response(200, {"updatedCells": 2}),
-        ("DELETE", FILES + "/s1"): HttpResponse(204),
+        ("PATCH", FILES + "/s1"): json_response(200, {"id": "s1", "trashed": True}),
     }
     sheets_store, seen = store(routes)
     assert sheets_store.create(Document("New", "a,b\n1,x\n", "sheet")) == "s9"
@@ -95,7 +95,8 @@ def test_create_update_and_delete():
     sheets_store.update("s1", Document("Budget", "", "sheet"))
     assert seen[-1].url.endswith(":clear")  # nothing to write after clearing
     sheets_store.delete("s1")
-    assert seen[-1].method == "DELETE" and urlsplit(seen[-1].url).path == FILES + "/s1"
+    assert seen[-1].method == "PATCH" and urlsplit(seen[-1].url).path == FILES + "/s1"
+    assert json.loads(seen[-1].body) == {"trashed": True}   # trashed, never permanently deleted
 
 
 def test_failures_become_store_errors():

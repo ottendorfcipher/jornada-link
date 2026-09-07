@@ -6,6 +6,8 @@ Items are the Markdown files themselves (id = ``pages/Name.md`` or
 """
 from __future__ import annotations
 
+import time
+
 import os
 import tempfile
 from pathlib import Path
@@ -145,13 +147,17 @@ class LogseqStore:
         return None
 
     def delete(self, item_id: str) -> None:
+        """Move the page into ``<graph>/logseq/bak/jornada/`` rather than unlinking it."""
         path = self._safe_path(item_id)
+        if not path.is_file():
+            raise StoreError(f"{item_id} is no longer in the graph")
+        backup_dir = self.directory.resolve().parent / "logseq" / "bak" / "jornada" / self._kind
+        stamp = time.strftime("%Y%m%d-%H%M%S")
         try:
-            path.unlink()
-        except FileNotFoundError as exc:
-            raise StoreError(f"{item_id} is no longer in the graph") from exc
+            backup_dir.mkdir(parents=True, exist_ok=True)
+            path.replace(backup_dir / f"{path.stem}.{stamp}{path.suffix}")
         except OSError as exc:
-            raise StoreError(f"could not delete {item_id}: {exc}") from exc
+            raise StoreError(f"could not move {item_id} to the bak folder: {exc}") from exc
 
 
 def build(account: Account, secrets: Dict[str, Any], context: BuildContext) -> LogseqStore:

@@ -149,7 +149,10 @@ func deletionChecks() {
     check("both sides emptied and links dropped", local.ids.isEmpty && remote.ids.isEmpty && newState.links.isEmpty)
     let kept = SyncEngine.plan(local: items(MemoryStore([("1", record)])), remote: items(MemoryStore([("r2", appt("B"))])), state: state,
                                options: SyncOptions(propagateDeletes: false))
-    check("without propagation deletions unlink", kinds(kept) == [.unlink, .unlink])
+    check("without propagation deletions are skipped and the links kept", kinds(kept) == [.skip, .skip])
+    let (keptState, _) = SyncEngine.apply(kept, local: MemoryStore([("1", record)]), remote: MemoryStore([("r2", appt("B"))]),
+                                         state: state)
+    check("kept copies stay linked", keptState.links.count == state.links.count)
     check("gone on both sides unlinks", kinds(SyncEngine.plan(local: [], remote: [], state: state)) == [.unlink, .unlink])
 }
 

@@ -84,7 +84,9 @@ final class RemindersStore: SyncStore, @unchecked Sendable {
 
     static func completion(of reminder: EKReminder) -> NaiveDate? {
         guard reminder.isCompleted else { return nil }
-        return reminder.completionDate.map { DeviceTime.localDate($0) } ?? DeviceTime.today()
+        // Reminders without a completion date get a fixed sentinel (Python's UNKNOWN_COMPLETION_DATE)
+        // rather than "today", which would change the fingerprint every day.
+        return reminder.completionDate.map { DeviceTime.localDate($0) } ?? NaiveDate(1970, 1, 1)
     }
 
     /// Reminders priorities: 1–4 high, 5 medium, 6–9 low, 0 none.

@@ -118,8 +118,8 @@ class PropVal:
 
     def to_json(self) -> Dict[str, Any]:
         value: Any = self.value
-        if self.kind == CEVT_BLOB:
-            value = bytes(self.value).hex()
+        if isinstance(value, (bytes, bytearray)):
+            value = bytes(value).hex()   # blobs, and the raw union bytes of an unknown type
         return {"id": self.prop_id, "kind": self.kind_name, "value": value, "flags": self.flags}
 
 
@@ -172,9 +172,13 @@ def _pack_value(prop: PropVal, payload_offset: int) -> bytes:
         return wire.u32(payload_offset) + wire.u32(0)
     if kind == CEVT_BLOB:
         return wire.u32(len(value)) + wire.u32(payload_offset)
-    if kind in (CEVT_I2, CEVT_I4):
+    if kind == CEVT_I2:
+        return struct.pack("<i", _check_range(prop, -0x8000, 0x7FFF)) + wire.u32(0)
+    if kind == CEVT_I4:
         return struct.pack("<i", _check_range(prop, -0x80000000, 0x7FFFFFFF)) + wire.u32(0)
-    if kind in (CEVT_UI2, CEVT_UI4):
+    if kind == CEVT_UI2:
+        return struct.pack("<I", _check_range(prop, 0, 0xFFFF)) + wire.u32(0)
+    if kind == CEVT_UI4:
         return struct.pack("<I", _check_range(prop, 0, 0xFFFFFFFF)) + wire.u32(0)
     if kind == CEVT_BOOL:
         return wire.u32(1 if value else 0) + wire.u32(0)

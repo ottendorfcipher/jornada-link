@@ -98,7 +98,9 @@ class GoogleDocsStore:
         return _version(payload)
 
     def delete(self, item_id: str) -> None:
-        response = send(self._http, SERVICE, "DELETE", f"/files/{quote(item_id, safe='')}", accept_errors=True)
+        # Trash rather than DELETE: a mistaken deletion can be undone from Drive's Trash.
+        response = send(self._http, SERVICE, "PATCH", f"/files/{quote(item_id, safe='')}",
+                        json_body={"trashed": True}, accept_errors=True)
         if response.status == 404:
             self._log(f"Drive file {item_id} was already gone")
         elif not response.ok:

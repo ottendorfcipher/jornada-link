@@ -269,9 +269,19 @@ final class SyncModel: ObservableObject {
             let relay: @Sendable (String) -> Void = { [weak self] line in
                 Task { @MainActor in self?.log(prefix + line) }
             }
+            // The device side of the calendar is narrowed to the same window as Calendar.app,
+            // so appointments outside it are absent on both sides rather than "deleted".
+            let localFilter: (@Sendable (any SyncRecord) -> Bool)? = {
+                if account == .calendar { return CalendarStore.windowFilter() }
+                return nil
+            }()
+            let saveState: (@Sendable (SyncState) throws -> Void)? = {
+                if !apply { return nil }
+                return { state in try SyncStateFile.save(state, to: stateURL) }
+            }()
             let outcome = try await rapi.run("sync \(account.module)") { client in
                 try SyncRun.perform(client: client, codec: codec, remote: remote, state: state, options: options,
-                                    apply: apply, log: relay)
+                                    apply: apply, log: relay, localFilter: localFilter, saveState: saveState)
             }
             if apply { try SyncStateFile.save(outcome.state, to: stateURL) }
             update(account) {

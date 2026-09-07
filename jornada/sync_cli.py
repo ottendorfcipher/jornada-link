@@ -8,9 +8,10 @@ from pathlib import Path
 from typing import Any, Callable, Dict, Optional, Tuple
 
 from .rapi import RapiClient
-from .sync.accounts import (Account, AccountError, delete_secret, find_account, load_accounts, read_secret,
-                            remove_account, save_accounts, state_path, sync_dir, update_secret, upsert_account,
-                            validate_name)
+from .rapi_errors import RapiError
+from .sync.accounts import (SECRET_KEYS, Account, AccountError, delete_secret, find_account, load_accounts,
+                            read_secret, remove_account, save_accounts, state_path, sync_dir, update_secret,
+                            upsert_account, validate_name)
 from .sync.base import StoreError
 from .sync.engine import Direction, Options, Prefer, apply, plan, refresh_hashes
 from .sync.registry import BuildContext, ModuleSpec, load_modules, module_for
@@ -69,7 +70,7 @@ def cmd_account_add(args: argparse.Namespace) -> int:
     module = modules[args.module]
     backend = module.backend(args.backend)
     given = _parse_pairs(args.set)
-    secret_keys = {s.key for s in backend.settings if s.secret}
+    secret_keys = {s.key for s in backend.settings if s.secret} | set(SECRET_KEYS)
     for key in args.ask or []:
         given[key] = getpass.getpass(f"{key}: ")
     plain = {k: v for k, v in given.items() if k not in secret_keys}
@@ -153,6 +154,9 @@ def run_sync(account: Account, module: ModuleSpec, client: Optional[RapiClient],
         raise AccountError(f"account {account.name!r} is missing {', '.join(missing)}; "
                            "run `jornada sync account login` or add the settings")
     if module.is_bridge:
+        if dry_run:
+            log(f"dry run: `jornada sync run {account.name}` would start the {backend.title} bridge")
+            return 0
         return module.bridge(account, secrets, context)
     if client is None or module.device_store is None:
         raise AccountError(f"module {module.key!r} needs a device connection")
@@ -171,9 +175,15 @@ def run_sync(account: Account, module: ModuleSpec, client: Optional[RapiClient],
                 log("  " + action.describe())
         return 0
     new_state, result = apply(plan_, local, remote, state, log=lambda line: log("  " + line))
+    save_state(state_file, new_state)   # links first: a failed re-read must not lose them
     if result.touched_local or result.touched_remote:
-        new_state = refresh_hashes(new_state, local.list(), remote.list(), result.touched_local, result.touched_remote)
-    save_state(state_file, new_state)
+        try:
+            new_state = refresh_hashes(new_state, local.list(), remote.list(),
+                                       result.touched_local, result.touched_remote)
+            save_state(state_file, new_state)
+        except (StoreError, RapiError, OSError) as exc:
+            log(f"warning: could not re-read the stores after writing ({exc}); "
+                "the next run may report the records it just wrote as changed")
     log(f"done: {result.summary()}")
     for error in result.errors:
         log(f"  error: {error}")

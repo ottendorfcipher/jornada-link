@@ -376,7 +376,7 @@ def account(**settings):
 
 def test_module_spec_and_bridge_refuses_without_local_credentials(tmp_path):
     assert MODULE.key == "mail" and MODULE.is_bridge and MODULE.device_store is None and MODULE.bridge is run_bridge
-    assert [s.key for s in MODULE.settings] == ["listen", "pop3_port", "smtp_port", "smtp_auth"]
+    assert [s.key for s in MODULE.settings] == ["listen", "pop3_port", "smtp_port", "smtp_auth", "allow_any_interface"]
     assert all(not s.required for s in MODULE.settings)
     assert [b.key for b in MODULE.backends] == ["imap", "gmail", "m365", "apple"]
     for backend in MODULE.backends:

@@ -210,9 +210,12 @@ class DeviceTableStore:
         items = []
         for table, info in sorted(self._databases().items()):
             try:
-                text = records_to_csv(self._records(info))
-            except (ValueError, RapiError) as exc:
-                self._log(f"skipping database {info.name!r}: {exc}")
+                text = records_to_csv(self._records(info))   # a RapiError aborts the run: absence must not read as deletion
+            except ValueError as exc:
+                if not self._prefix and not self._db_type:
+                    continue   # with no prefix, an unrelated device database is simply not ours
+                self._log(f"database {info.name!r} cannot be read as a table ({exc}); it is left alone")
+                items.append(Item(id=table, record=None, problem=str(exc)))
                 continue
             items.append(Item(id=table, record=Document(name=table, text=text, kind=KIND)))
         return tuple(items)

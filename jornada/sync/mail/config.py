@@ -31,7 +31,11 @@ SERVER_SETTINGS = (
     SettingSpec("smtp_auth", "require the local user name and password for outgoing mail: on (default) or off "
                 "(the bridge only listens on the PPP address, so off is acceptable for an Inbox that cannot "
                 "authenticate)", required=False, default="on"),
+    SettingSpec("allow_any_interface", "yes to permit listen=0.0.0.0 (exposes the bridge and your mail to the "
+                "whole network; default no)", required=False, default="no"),
 )
+WILDCARD_ADDRESSES = ("", "0.0.0.0", "::", "*")
+PRIVATE_LINK_PREFIXES = ("127.", "192.168.131.", "::1")
 
 
 @dataclass(frozen=True)
@@ -62,6 +66,13 @@ def config_from_account(account: Account, secrets: Dict[str, Any], context: Buil
                         f"with): `jornada sync account add {account.name} ... --set local_user=jornada "
                         "--ask local_password`")
     listen = (account.setting("listen") or "").strip() or context.listen_ip or DEFAULT_LISTEN
+    smtp_auth = choice_setting(account, "smtp_auth", ("on", "off"), "on") == "on"
+    if listen in WILDCARD_ADDRESSES and choice_setting(account, "allow_any_interface", ("yes", "no"), "no") != "yes":
+        raise MailError(f"listen={listen!r} would expose the bridge and your mailbox to every network this Mac is on; "
+                        f"use the PPP address ({DEFAULT_LISTEN}) or set allow_any_interface=yes deliberately")
+    if not smtp_auth and not listen.startswith(PRIVATE_LINK_PREFIXES):
+        raise MailError("smtp_auth=off is only allowed when the bridge listens on the PPP address or loopback "
+                        "(anything else would be an open relay through your account)")
     return BridgeConfig(
         local_user=local_user,
         local_password=local_password,
@@ -69,5 +80,5 @@ def config_from_account(account: Account, secrets: Dict[str, Any], context: Buil
         pop3_port=positive_int_setting(account, "pop3_port", DEFAULT_POP3_PORT, minimum=0, maximum=MAX_PORT),
         smtp_port=positive_int_setting(account, "smtp_port", DEFAULT_SMTP_PORT, minimum=0, maximum=MAX_PORT),
         max_size=positive_int_setting(account, "max_size", DEFAULT_MAX_SIZE),
-        smtp_auth=choice_setting(account, "smtp_auth", ("on", "off"), "on") == "on",
+        smtp_auth=smtp_auth,
     )

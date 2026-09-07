@@ -3,9 +3,10 @@ import Foundation
 import JornadaCore
 
 /// The Mac's Calendar (EventKit) as a `SyncStore`: events of one calendar from
-/// 30 days ago to 365 days ahead. Recurring events are listed per occurrence,
-/// marked `recurring`, and never written — the device cannot model the rule and
-/// the engine only ever edits one-off copies of them.
+/// 30 days ago to 365 days ahead. Recurring events are not synced (the device
+/// cannot model the rule, and per-occurrence copies would age out of the window
+/// and read as deletions); the same window is applied to the device side through
+/// `windowFilter` so records outside it are absent on both sides.
 final class CalendarStore: SyncStore, @unchecked Sendable {
     static let daysBefore = 30
     static let daysAhead = 365
@@ -38,10 +39,21 @@ final class CalendarStore: SyncStore, @unchecked Sendable {
         return store.events(matching: predicate)
             .sorted { $0.startDate < $1.startDate }
             .compactMap { event in
+                guard !Self.isRecurring(event) else { return nil }
                 let id = Self.itemId(for: event)
                 guard seen.insert(id).inserted else { return nil }
                 return SyncItem(id: id, record: Self.record(from: event))
             }
+    }
+
+    /// Keeps device appointments that overlap this store's window (apply it to the device side).
+    static func windowFilter(now: Date = Date()) -> @Sendable (any SyncRecord) -> Bool {
+        let start = DeviceTime.wallClock(now.addingTimeInterval(-TimeInterval(daysBefore) * 86_400))
+        let end = DeviceTime.wallClock(now.addingTimeInterval(TimeInterval(daysAhead) * 86_400))
+        return { record in
+            guard let appointment = record as? Appointment else { return true }
+            return appointment.end > start && appointment.start < end
+        }
     }
 
     func create(_ record: any SyncRecord) throws -> String {

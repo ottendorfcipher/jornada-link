@@ -69,7 +69,8 @@ def test_device_store_lists_creates_updates_deletes(client, device, tmp_path, mo
     store = textcodec.device_store(client, account(), context(tmp_path, logs.append))
     assert isinstance(store, DeviceFolderStore) and store.folder == FOLDER
     items = store.list()
-    assert [i.id for i in items] == ["Ideas.txt", "Memo.rtf"]
+    assert [(i.id, i.unreadable) for i in items] == [("Broken.rtf", True), ("Ideas.txt", False), ("Memo.rtf", False)]
+    items = tuple(i for i in items if not i.unreadable)
     assert items[0].record.name == "Ideas" and items[0].record.text == "héllo\nworld\n"
     assert isinstance(items[0].record.modified, datetime) and items[0].version
     assert items[1].record.text == "Dear all,\n\nSee attached — café." and items[1].record.kind == "text"

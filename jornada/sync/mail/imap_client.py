@@ -214,9 +214,22 @@ class ImapBackend:
             if target:
                 self._copy(client, joined, target)
             check(client.uid("STORE", joined, "+FLAGS.SILENT", "(\\Deleted)"), "flagging messages as deleted")
-            check(client.expunge(), "expunging messages")
+            # A plain EXPUNGE would also purge messages other clients flagged; UID EXPUNGE
+            # (RFC 4315 UIDPLUS) removes only ours. Without UIDPLUS the flag is left for
+            # the mailbox's own housekeeping.
+            if self._has_uidplus(client):
+                check(client.uid("EXPUNGE", joined), "expunging messages")
 
         self._guard("removing messages", action)
+
+    @staticmethod
+    def _has_uidplus(client: Any) -> bool:
+        try:
+            typ, data = client.capability()
+        except (OSError, AttributeError):
+            return False
+        words = b" ".join(item for item in (data or ()) if isinstance(item, bytes)).upper().split()
+        return typ == "OK" and b"UIDPLUS" in words
 
     @staticmethod
     def _copy(client: Any, joined: str, target: str) -> None:

@@ -147,7 +147,8 @@ class NumbersStore:
             try:
                 rows = self._export(path)
             except (StoreError, ValueError) as exc:
-                self._log(f"skipping {path.name}: {exc}")
+                self._log(f"{path.name} cannot be read ({exc}); it is left alone")
+                items.append(Item(id=path.name, record=None, problem=str(exc)))
                 continue
             modified, version = _stamp(path)
             record = Document(name=path.name[:-len(EXTENSION)], text=rows_to_csv(rows), kind=KIND, modified=modified)

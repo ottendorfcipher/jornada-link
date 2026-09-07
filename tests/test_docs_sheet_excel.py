@@ -44,6 +44,9 @@ def test_list_pages_downloads_and_skips_non_sheets():
     log = []
     excel_store, seen = store(listing_routes(), log=log)
     items = excel_store.list()
+    unreadable = [i for i in items if i.unreadable]
+    assert [i.id for i in unreadable] == ["i5"] and "not a" in (unreadable[0].problem or "").lower()
+    items = tuple(i for i in items if not i.unreadable)
     assert [(i.id, i.record.name, i.record.text, i.version) for i in items] == [
         ("i1", "Budget", "Item,Cost\nTea,3\n", "e1"), ("i2", "notes", "Item,Cost\nMilk,1.5\n", "e2")]
     assert items[0].record.kind == "sheet" and items[0].record.modified is not None

@@ -130,8 +130,8 @@ class BearStore:
         if not isinstance(note_id, str) or not note_id:
             return None
         if not isinstance(text, str):
-            self._log(f"skipping Bear note {note_id}: no readable text (encrypted?)")
-            return None
+            self._log(f"Bear note {note_id} has no readable text (encrypted?); it is left alone")
+            return Item(id=note_id, record=None, problem="no readable text (encrypted?)")
         if self._tag and not has_tag(text, self._tag):
             return None
         title = str(title or "")

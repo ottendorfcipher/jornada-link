@@ -67,10 +67,11 @@ def test_list_handles_folder_exports_and_skips_failures(folder):
     log = []
     store = numbers.NumbersStore(folder, runner=runner, log=log.append)
     items = store.list()
-    assert [i.id for i in items] == ["Budget.numbers"] and items[0].record.text == "x,y\n"
-    assert any("skipping Tables.numbers" in line and "no CSV" in line for line in log)
+    assert [(i.id, i.unreadable) for i in items] == [("Budget.numbers", False), ("Tables.numbers", True)]
+    assert items[0].record.text == "x,y\n" and "no CSV" in items[1].problem
+    assert any("Tables.numbers cannot be read" in line for line in log)
     failing = numbers.NumbersStore(folder, runner=fake_runner([RuntimeError("Numbers got an error")]), log=log.append)
-    assert failing.list() == () and any("Numbers got an error" in line for line in log)
+    assert all(i.unreadable for i in failing.list()) and any("Numbers got an error" in line for line in log)
 
 
 def test_create_update_and_delete(folder):

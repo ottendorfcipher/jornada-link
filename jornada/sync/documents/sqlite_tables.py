@@ -7,6 +7,8 @@ always travel as parameters — never formatted into SQL.
 """
 from __future__ import annotations
 
+import time
+
 import sqlite3
 from contextlib import contextmanager
 from pathlib import Path
@@ -116,7 +118,7 @@ class SqliteTableStore:
 
     def _table_names(self, connection: sqlite3.Connection) -> Tuple[str, ...]:
         found = tuple(str(row[0]) for row in connection.execute(
-            "SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name"))
+            "SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' AND name NOT LIKE '\\_jornada\\_trash\\_%' ESCAPE '\\' ORDER BY name"))
         if not self._tables:
             return found
         wanted = {name.casefold() for name in self._tables}
@@ -187,9 +189,13 @@ class SqliteTableStore:
         return None
 
     def delete(self, item_id: str) -> None:
+        """Rename the table into the ``_jornada_trash_`` namespace rather than dropping it."""
         table = table_name(item_id)
+        trash = f"_jornada_trash_{table}_{time.strftime('%Y%m%d%H%M%S')}"
         with self._session() as connection:
-            connection.execute(f"DROP TABLE IF EXISTS {quote_identifier(table)}")
+            exists = connection.execute("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?", (table,)).fetchone()
+            if exists:
+                connection.execute(f"ALTER TABLE {quote_identifier(table)} RENAME TO {quote_identifier(trash)}")
 
 
 # -- backend --------------------------------------------------------------------

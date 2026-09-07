@@ -108,7 +108,10 @@ func recurringChecks(_ client: RapiClient, store: DeviceStore) throws {
         _ = try store.update(id: String(weeklyOid), record: Appointment(summary: "Weekly", start: NaiveDateTime(2026, 1, 1, 9),
                                                                          end: NaiveDateTime(2026, 1, 1, 10)))
     })
-    try store.delete(id: String(weeklyOid))
+    check("deleting a recurring appointment is refused", fails { try store.delete(id: String(weeklyOid)) })
+    let cleanup = try client.openDatabase(oid: info.oid)
+    try client.deleteRecord(handle: cleanup, oid: weeklyOid)
+    try client.closeHandle(cleanup)
 }
 
 func taskStoreChecks(_ client: RapiClient, snapshots: URL) throws {

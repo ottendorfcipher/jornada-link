@@ -17,7 +17,9 @@ from typing import Any, Callable, Dict, Iterable, Mapping, Optional, Tuple, Unio
 Headers = Tuple[Tuple[str, str], ...]
 USER_AGENT = "jornada-link/0.1 (+https://github.com/ottendorfcipher/jornada-link)"
 _RETRY_STATUSES = (429, 500, 502, 503, 504)
+_IDEMPOTENT = ("GET", "HEAD", "OPTIONS", "PUT", "DELETE", "PROPFIND", "REPORT")
 _SENSITIVE = ("authorization", "cookie", "x-api-key")
+MAX_BODY = 64 * 1024 * 1024
 
 
 @dataclass(frozen=True)
@@ -83,6 +85,22 @@ def redact(headers: Iterable[Tuple[str, str]]) -> Headers:
     return tuple((k, "<redacted>" if k.lower() in _SENSITIVE else v) for k, v in headers)
 
 
+def _origin(url: str) -> Tuple[str, str]:
+    parts = urllib.parse.urlsplit(url)
+    return parts.scheme.lower(), parts.netloc.lower()
+
+
+class _SafeRedirectHandler(urllib.request.HTTPRedirectHandler):
+    """Follows redirects, but credentials never travel to a different origin."""
+
+    def redirect_request(self, req: Any, fp: Any, code: int, msg: str, headers: Any, newurl: str) -> Any:
+        redirected = super().redirect_request(req, fp, code, msg, headers, newurl)
+        if redirected is not None and _origin(req.full_url) != _origin(redirected.full_url):
+            for name in ("Authorization", "Cookie", "X-api-key"):
+                redirected.remove_header(name)
+        return redirected
+
+
 class _AnyMethodRequest(urllib.request.Request):
     def __init__(self, method: str, *args: Any, **kwargs: Any) -> None:
         self._method = method
@@ -94,16 +112,22 @@ class _AnyMethodRequest(urllib.request.Request):
 
 def urllib_transport(timeout: float = 30.0) -> Transport:
     """The real transport; HTTP errors become responses, connection failures raise HttpError."""
-    opener = urllib.request.build_opener(urllib.request.HTTPRedirectHandler)
+    opener = urllib.request.build_opener(_SafeRedirectHandler)
+
+    def bounded(stream: Any) -> bytes:
+        body = stream.read(MAX_BODY + 1)
+        if len(body) > MAX_BODY:
+            raise HttpError(0, f"response body exceeds {MAX_BODY} bytes")
+        return body
 
     def send(request: HttpRequest) -> HttpResponse:
         req = _AnyMethodRequest(request.method, request.url, data=request.body,
                                 headers={k: v for k, v in request.headers})
         try:
             with opener.open(req, timeout=timeout) as reply:
-                return HttpResponse(reply.status, tuple(reply.headers.items()), reply.read())
+                return HttpResponse(reply.status, tuple(reply.headers.items()), bounded(reply))
         except urllib.error.HTTPError as exc:
-            return HttpResponse(exc.code, tuple(exc.headers.items()), exc.read() or b"")
+            return HttpResponse(exc.code, tuple(exc.headers.items()), bounded(exc) or b"")
         except (urllib.error.URLError, OSError) as exc:
             raise HttpError(0, f"cannot reach {urllib.parse.urlsplit(request.url).netloc}: {exc}") from exc
 
@@ -160,7 +184,7 @@ class HttpClient:
         attempt = 0
         while True:
             response = self._transport(request)
-            if response.status not in _RETRY_STATUSES or attempt >= self._retries:
+            if not _retryable(request.method, response.status) or attempt >= self._retries:
                 return response
             attempt += 1
             retry_after = response.header("Retry-After")
@@ -184,6 +208,13 @@ class HttpClient:
 
     def get_json(self, path: str, **kwargs: Any) -> Any:
         return self.get(path, **kwargs).json()
+
+
+def _retryable(method: str, status: int) -> bool:
+    """429 is always safe to retry; 5xx only for methods a server may have applied at most once."""
+    if status == 429:
+        return True
+    return status in _RETRY_STATUSES and method.upper() in _IDEMPOTENT
 
 
 def _safe_url(url: str) -> str:

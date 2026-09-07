@@ -68,8 +68,16 @@ def test_delete_modes():
     backend.connect()
     backend.delete(("1", "2"))
     client = imaps.created[0]
-    assert ("uid", "STORE", "1,2", "+FLAGS.SILENT", "(\\Deleted)") in client.calls and ("expunge",) in client.calls
+    assert ("uid", "STORE", "1,2", "+FLAGS.SILENT", "(\\Deleted)") in client.calls
+    assert ("uid", "EXPUNGE", "1,2") in client.calls and ("expunge",) not in client.calls
     assert client.expunged == ["1", "2"] and not any(call[:2] == ("uid", "COPY") for call in client.calls)
+
+    backend, imaps, _ = make(MailLimits(on_delete="delete"), uidplus=False)
+    backend.connect()
+    backend.delete(("1",))
+    client = imaps.created[0]
+    assert ("uid", "STORE", "1", "+FLAGS.SILENT", "(\\Deleted)") in client.calls
+    assert not any(call[:2] == ("uid", "EXPUNGE") for call in client.calls) and ("expunge",) not in client.calls
 
     backend, imaps, _ = make(MailLimits(on_delete="delete"), trash="[Gmail]/Trash")
     backend.connect()
@@ -82,7 +90,7 @@ def test_delete_modes():
     calls = imaps.created[0].calls
     copy_index = calls.index(("uid", "COPY", "2", '"Old Mail"'))
     assert calls[copy_index + 1] == ("create", '"Old Mail"') and calls[copy_index + 2] == ("uid", "COPY", "2", '"Old Mail"')
-    assert calls.index(("expunge",)) > copy_index
+    assert calls.index(("uid", "EXPUNGE", "2")) > copy_index
     backend.delete(())
     with pytest.raises(MailError):
         backend.delete(("nope",))

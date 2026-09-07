@@ -78,9 +78,10 @@ class FakeImap:
 
     error = imaplib.IMAP4.error
 
-    def __init__(self, host: str, port: int, use_ssl: bool, messages: Dict[str, bytes], fail_login: bool = False,
+    def __init__(self, host: str, port: int, use_ssl: bool, messages: Dict[str, bytes], fail_login: bool = False, uidplus: bool = True,
                  missing_mailboxes: Iterable[str] = ()) -> None:
         self.host, self.port, self.use_ssl = host, port, use_ssl
+        self.uidplus = uidplus
         self.messages = dict(messages)
         self.fail_login = fail_login
         self.missing_mailboxes = set(missing_mailboxes)
@@ -124,7 +125,17 @@ class FakeImap:
             if args[1].strip('"') in self.missing_mailboxes:
                 return "NO", [b"[TRYCREATE] No such mailbox"]
             return "OK", [b"COPY completed"]
+        if command == "EXPUNGE":
+            removed = [uid for uid in args[0].split(",") if "Deleted" in self.flags.get(uid, "")]
+            for uid in removed:
+                self.messages.pop(uid, None)
+            self.expunged.extend(removed)
+            return "OK", [b"1"]
         raise self.error(f"unexpected UID {command}")
+
+    def capability(self) -> Tuple[str, list]:
+        self.calls.append(("capability",))
+        return "OK", [b"IMAP4rev1 IDLE" + (b" UIDPLUS" if self.uidplus else b"")]
 
     def _fetch(self, uid_set: str, part: str) -> Tuple[str, list]:
         uids = uid_set.split(",")

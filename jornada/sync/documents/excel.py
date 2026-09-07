@@ -134,7 +134,8 @@ class ExcelStore:
             try:
                 rows = self._rows_of(entry, extension)
             except ValueError as exc:
-                self._log(f"skipping {name}: {exc}")
+                self._log(f"{name} cannot be read ({exc}); it is left alone")
+                items.append(Item(id=str(entry["id"]), record=None, problem=str(exc)))
                 continue
             item_id = str(entry["id"])
             self._extensions[item_id] = extension

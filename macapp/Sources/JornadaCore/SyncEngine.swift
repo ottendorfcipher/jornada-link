@@ -170,9 +170,15 @@ public enum SyncEngine {
         }
         let linkedLocal = Set(state.links.map(\.localId))
         let linkedRemote = Set(state.links.map(\.remoteId))
-        let fresh = pairNew(local.filter { !linkedLocal.contains($0.id) },
-                            remote.filter { !linkedRemote.contains($0.id) }, options: options)
-        return SyncPlan(actions: linked + fresh)
+        let newLocal = local.filter { !linkedLocal.contains($0.id) }
+        let newRemote = remote.filter { !linkedRemote.contains($0.id) }
+        let unreadable = newLocal.filter(\.unreadable).map {
+            SyncAction(.skip, localId: $0.id, reason: "unreadable: \($0.problem ?? "")")
+        } + newRemote.filter(\.unreadable).map {
+            SyncAction(.skip, remoteId: $0.id, reason: "unreadable: \($0.problem ?? "")")
+        }
+        let fresh = pairNew(newLocal.filter { !$0.unreadable }, newRemote.filter { !$0.unreadable }, options: options)
+        return SyncPlan(actions: linked + unreadable + fresh)
     }
 
     static func planLink(_ link: SyncLink, local: SyncItem?, remote: SyncItem?, options: SyncOptions) -> [SyncAction] {
@@ -180,20 +186,34 @@ public enum SyncEngine {
             guard let local else {
                 return [SyncAction(.unlink, localId: link.localId, remoteId: link.remoteId, reason: "gone on both sides")]
             }
-            if options.propagateDeletes && options.writesLocal {
+            if let problem = local.problem {
+                return [SyncAction(.skip, localId: link.localId, remoteId: link.remoteId,
+                                   reason: "unreadable on the device: \(problem)")]
+            }
+            if options.propagateDeletes && options.writesLocal && !local.readOnly {
                 return [SyncAction(.deleteLocal, localId: link.localId, remoteId: link.remoteId, record: local.record,
                                    reason: "deleted remotely")]
             }
-            return [SyncAction(.unlink, localId: link.localId, remoteId: link.remoteId, record: local.record,
+            // The link is kept on purpose: a kept copy must not read as "new" on the next run.
+            return [SyncAction(.skip, localId: link.localId, remoteId: link.remoteId, record: local.record,
                                reason: "deleted remotely; device copy kept")]
         }
         guard let local else {
+            if let problem = remote.problem {
+                return [SyncAction(.skip, localId: link.localId, remoteId: link.remoteId,
+                                   reason: "unreadable remotely: \(problem)")]
+            }
             if options.propagateDeletes && options.writesRemote {
                 return [SyncAction(.deleteRemote, localId: link.localId, remoteId: link.remoteId, record: remote.record,
                                    reason: "deleted on the device")]
             }
-            return [SyncAction(.unlink, localId: link.localId, remoteId: link.remoteId, record: remote.record,
+            return [SyncAction(.skip, localId: link.localId, remoteId: link.remoteId, record: remote.record,
                                reason: "deleted on the device; remote copy kept")]
+        }
+        if local.unreadable || remote.unreadable {
+            let where_ = local.unreadable ? "on the device" : "remotely"
+            let problem = local.problem ?? remote.problem ?? ""
+            return [SyncAction(.skip, localId: local.id, remoteId: remote.id, reason: "unreadable \(where_): \(problem)")]
         }
         let localChanged = local.fingerprint != link.localHash
         let remoteChanged = remote.fingerprint != link.remoteHash
@@ -216,6 +236,10 @@ public enum SyncEngine {
     }
 
     static func pull(_ local: SyncItem, _ remote: SyncItem, options: SyncOptions, reason: String) -> SyncAction {
+        if local.readOnly {
+            return SyncAction(.skip, localId: local.id, remoteId: remote.id, record: remote.record,
+                              reason: reason + "; device record is read-only")
+        }
         if options.writesLocal {
             return SyncAction(.updateLocal, localId: local.id, remoteId: remote.id, record: remote.record, reason: reason)
         }
@@ -229,6 +253,11 @@ public enum SyncEngine {
                               reason: "changed on both sides; remote wins")
         let push = SyncAction(.updateRemote, localId: local.id, remoteId: remote.id, record: local.record,
                               reason: "changed on both sides; device wins")
+        if local.readOnly {
+            return options.writesRemote ? push : SyncAction(.conflict, localId: local.id, remoteId: remote.id,
+                                                             record: local.record,
+                                                             reason: "changed on both sides; device record is read-only")
+        }
         if !options.writesLocal {
             return options.writesRemote ? push : SyncAction(.conflict, localId: local.id, remoteId: remote.id,
                                                             record: local.record, reason: "changed on both sides; left as is")

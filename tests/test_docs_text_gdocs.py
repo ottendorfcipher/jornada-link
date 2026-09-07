@@ -113,15 +113,16 @@ def test_update_and_delete(tmp_path):
         assert request.body == "new\ntext".encode("utf-8")
         return json_response(200, {"id": "a", "version": 9})
 
-    routes = {("PATCH", f"{UPLOAD}/a"): patch, ("DELETE", f"{FILES}/a"): HttpResponse(204),
-              ("DELETE", f"{FILES}/gone"): json_response(404, {}), ("DELETE", f"{FILES}/nope"): json_response(403, {"error": {}})}
+    routes = {("PATCH", f"{UPLOAD}/a"): patch, ("PATCH", f"{FILES}/a"): json_response(200, {"id": "a", "trashed": True}),
+              ("PATCH", f"{FILES}/gone"): json_response(404, {}), ("PATCH", f"{FILES}/nope"): json_response(403, {"error": {}})}
     remote, seen = store(routes, tmp_path, folder_id="fld")
     assert remote.update("a", Document("A", "new\ntext")) == "9"
     remote.delete("a")
     remote.delete("gone")
     with pytest.raises(StoreError):
         remote.delete("nope")
-    assert [r.method for r in seen] == ["PATCH", "DELETE", "DELETE", "DELETE"]
+    assert [r.method for r in seen] == ["PATCH", "PATCH", "PATCH", "PATCH"]
+    assert json.loads(seen[1].body) == {"trashed": True}   # Drive trash, never a permanent DELETE
 
 
 def test_failures_and_spec(tmp_path):

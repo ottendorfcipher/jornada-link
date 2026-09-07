@@ -142,4 +142,6 @@ def test_failures_surface_as_store_errors(tmp_path):
     logs = []
     remote, _ = store({("GET", f"{FOLDER}/children"): json_response(200, {"value": [entry("d1", "Bad.docx")]}),
                        ("GET", f"{BASE}/items/d1/content"): HttpResponse(200, (), b"not a docx")}, tmp_path, logs.append)
-    assert remote.list() == () and any("skipping Bad.docx" in line for line in logs)
+    (bad,) = remote.list()
+    assert bad.id == "d1" and bad.unreadable and "not a .docx" in bad.problem
+    assert any("Bad.docx cannot be read" in line for line in logs)

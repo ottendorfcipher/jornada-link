@@ -13,8 +13,11 @@ enum SyncRun {
     }
 
     static func perform(client: RapiClient, codec: PimCodec, remote: any SyncStore, state: SyncState,
-                        options: SyncOptions, apply: Bool, log: @escaping @Sendable (String) -> Void) throws -> Outcome {
-        let device = DeviceStore(client: client, codec: codec, log: log)
+                        options: SyncOptions, apply: Bool, log: @escaping @Sendable (String) -> Void,
+                        localFilter: (@Sendable (any SyncRecord) -> Bool)? = nil,
+                        saveState: (@Sendable (SyncState) throws -> Void)? = nil) throws -> Outcome {
+        let raw = DeviceStore(client: client, codec: codec, log: log)
+        let device: any SyncStore = localFilter.map { FilteredStore(raw, keep: $0) } ?? raw
         let localItems = try device.list()
         let remoteItems = try remote.list()
         log("device: \(localItems.count) record(s); \(remote.name): \(remoteItems.count) record(s); \(state.links.count) linked")
@@ -24,13 +27,22 @@ enum SyncRun {
             return Outcome(plan: plan, state: state, result: nil, deviceCount: localItems.count)
         }
         let (applied, result) = SyncEngine.apply(plan, local: device, remote: remote, state: state, log: { log("  " + $0) })
+        try saveState?(applied)   // links first: a failed re-read must not lose them
         let touched = !result.touchedLocal.isEmpty || !result.touchedRemote.isEmpty
-        let refreshedLocal = touched ? try device.list() : localItems
-        let final = touched
-            ? SyncEngine.refreshHashes(applied, local: refreshedLocal, remote: try remote.list(),
-                                       touchedLocal: result.touchedLocal, touchedRemote: result.touchedRemote)
-            : applied
+        var final = applied
+        var deviceCount = localItems.count
+        if touched {
+            do {
+                let refreshedLocal = try device.list()
+                final = SyncEngine.refreshHashes(applied, local: refreshedLocal, remote: try remote.list(),
+                                                 touchedLocal: result.touchedLocal, touchedRemote: result.touchedRemote)
+                deviceCount = refreshedLocal.count
+                try saveState?(final)
+            } catch {
+                log("warning: could not re-read the stores after writing (\(error)); the next run may report the records it just wrote as changed")
+            }
+        }
         log("done: \(result.summary())")
-        return Outcome(plan: plan, state: final, result: result, deviceCount: refreshedLocal.count)
+        return Outcome(plan: plan, state: final, result: result, deviceCount: deviceCount)
     }
 }

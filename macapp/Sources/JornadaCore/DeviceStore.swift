@@ -63,14 +63,21 @@ public final class DeviceStore: SyncStore, @unchecked Sendable {
     public func list() throws -> [SyncItem] {
         let records = try records()
         raw = Dictionary(records.map { ($0.oid, $0) }, uniquingKeysWith: { _, last in last })
-        return records.compactMap { record in
+        return records.map { record in
             do {
-                return SyncItem(id: String(record.oid), record: try codec.decode(record))
+                let decoded = try codec.decode(record)
+                return SyncItem(id: String(record.oid), record: decoded, readOnly: codec.isReadOnly(decoded))
             } catch {
-                log(String(format: "skipping record 0x%08x: %@", record.oid, "\(error)"))
-                return nil
+                log(String(format: "record 0x%08x cannot be decoded (%@); it is left alone", record.oid, "\(error)"))
+                return SyncItem.unreadable(id: String(record.oid), problem: "\(error)")
             }
         }
+    }
+
+    /// A record that is recurring, or that cannot be decoded at all, is never rewritten or deleted.
+    private func isReadOnly(_ existing: Record) -> Bool {
+        guard let decoded = try? codec.decode(existing) else { return true }
+        return codec.isReadOnly(decoded)
     }
 
     public func create(_ record: any SyncRecord) throws -> String {
@@ -84,7 +91,7 @@ public final class DeviceStore: SyncStore, @unchecked Sendable {
     public func update(id: String, record: any SyncRecord) throws -> String? {
         let oid = try Self.oid(from: id)
         let existing = raw[oid]
-        if let existing, codec.isReadOnly(try codec.decode(existing)) {
+        if let existing, isReadOnly(existing) {
             throw StoreError(String(format: "record 0x%08x is recurring; the device copy is left unchanged", oid))
         }
         let props = try codec.encode(record, existing)
@@ -95,6 +102,9 @@ public final class DeviceStore: SyncStore, @unchecked Sendable {
 
     public func delete(id: String) throws {
         let oid = try Self.oid(from: id)
+        if let existing = raw[oid], isReadOnly(existing) {
+            throw StoreError(String(format: "record 0x%08x is recurring; the device copy is left unchanged", oid))
+        }
         try ensureSnapshot()
         try withHandle { try client.deleteRecord(handle: $0, oid: oid) }
         raw.removeValue(forKey: oid)

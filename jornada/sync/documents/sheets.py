@@ -161,7 +161,8 @@ class SheetsStore:
         return None
 
     def delete(self, item_id: str) -> None:
-        self._call(self._drive, "DELETE", f"/files/{quote(item_id, safe='')}")
+        # Trash rather than DELETE so a mistaken deletion can be undone from Drive's Trash.
+        self._call(self._drive, "PATCH", f"/files/{quote(item_id, safe='')}", json_body={"trashed": True})
 
 
 # -- backend --------------------------------------------------------------------

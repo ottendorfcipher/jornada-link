@@ -63,7 +63,11 @@ class WordStore:
         self._names = {entry["id"]: str(entry.get("name", "")) for entry in entries}
         items = []
         for entry in entries:
-            record = self._fetch(entry)
+            try:
+                record = self._fetch(entry)
+            except StoreError as exc:
+                items.append(Item(id=entry["id"], record=None, problem=str(exc)))
+                continue
             if record is not None:
                 items.append(Item(id=entry["id"], record=record, version=entry.get("eTag")))
         return tuple(items)
@@ -119,8 +123,8 @@ class WordStore:
         try:
             text = docx.to_text(response.body) if name.lower().endswith(".docx") else decode_text(response.body)
         except ValueError as exc:
-            self._log(f"skipping {name}: {exc}")
-            return None
+            self._log(f"{name} cannot be read ({exc}); it is left alone")
+            raise StoreError(f"{name}: {exc}") from exc
         return Document(name=_stem(name), text=text, kind="text",
                         modified=remote_modified(entry.get("lastModifiedDateTime")))
 

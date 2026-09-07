@@ -46,6 +46,18 @@ TLS, OAuth, modern file formats.
   is also archived in the sent-file mirror. `--dry-run` prints the plan and
   changes nothing.
 
+- **What never happens by accident.** A record a store cannot read (a corrupt
+  date, a file that is not what its extension says, a Bear note that is
+  encrypted) is listed as *unreadable* and left alone on both sides rather than
+  being read as a deletion. With `--no-delete`, or in a one-way run, a record
+  deleted on one side keeps its link so the surviving copy is neither deleted
+  nor recreated. Recurring appointments on the device are never rewritten or
+  deleted. Remote deletions go to a recycle bin where the service has one
+  (Drive's Trash, OneDrive's recycle bin, Apple's Trash), to
+  `logseq/bak/jornada/` in a Logseq graph, and to a `_jornada_trash_` table in
+  SQLite. The state file is saved right after the changes are applied, before
+  the stores are re-read.
+
 Times: the Jornada has one clock and `jornada settime` sets it to the Mac's
 local wall-clock, so device times are treated as local wall-clock values and
 converted to the Mac's time zone on the modern side.
