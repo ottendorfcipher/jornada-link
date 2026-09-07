@@ -222,9 +222,11 @@ class Contact(Record):
                        categories=_clean_list(self.categories))
 
     def match_key(self) -> str:
+        """Pairing key: the composed name (independent of a "Last, First" full-name style) plus the first e-mail."""
         me = self.normalized()
+        composed = " ".join(p for p in (me.first_name, me.middle_name, me.last_name) if p)
         email = me.emails[0].casefold() if me.emails else ""
-        return f"contact|{me.display_name().casefold()}|{email}"
+        return f"contact|{(composed or me.display_name()).casefold()}|{email}"
 
 
 @dataclass(frozen=True)

@@ -117,6 +117,9 @@ def test_models_normalize_and_match():
     assert Appointment.from_dict(a.to_dict()) == a
     c = Contact(full_name="", first_name="Ada", last_name="Lovelace", emails=("A@x.org",))
     assert c.display_name() == "Ada Lovelace" and c.match_key() == "contact|ada lovelace|a@x.org"
+    filed_last_first = Contact(full_name="Lovelace, Ada", first_name="Ada", last_name="Lovelace", emails=("a@x.org",))
+    assert filed_last_first.match_key() == c.match_key()   # a device "Last, First" full name still pairs
+    assert Contact(full_name="ACME Ltd").match_key() == "contact|acme ltd|"
     assert Contact(company="ACME").display_name() == "ACME" and Contact(emails=("e@x",)).display_name() == "e@x"
     assert Task("x", priority="bogus").normalized().priority == "normal"
     note = Note("T", "b\r\n", modified=datetime(2026, 1, 1))
