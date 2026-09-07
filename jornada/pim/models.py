@@ -11,7 +11,7 @@ import hashlib
 import json
 from dataclasses import asdict, dataclass, field, fields, replace
 from datetime import date, datetime
-from typing import Any, Dict, Optional, Tuple, Type, TypeVar
+from typing import Any, ClassVar, Dict, Optional, Tuple, Type, TypeVar
 
 from .timeconv import parse_iso
 
@@ -53,6 +53,9 @@ def _clean_list(values: Any) -> Tuple[str, ...]:
 class Record:
     """Common behaviour: JSON conversion and hashing over the normalized content."""
 
+    # Fields that identify or locate a record rather than describe its content.
+    HASH_EXCLUDE: ClassVar[Tuple[str, ...]] = ("uid",)
+
     def to_dict(self) -> Dict[str, Any]:
         return {f.name: _jsonable(getattr(self, f.name)) for f in fields(self)}
 
@@ -70,7 +73,8 @@ class Record:
 
     def fingerprint(self) -> str:
         content = self.normalized().to_dict()
-        content.pop("uid", None)
+        for name in self.HASH_EXCLUDE:
+            content.pop(name, None)
         canonical = json.dumps(content, sort_keys=True, ensure_ascii=False)
         return hashlib.sha1(canonical.encode("utf-8")).hexdigest()
 
@@ -230,6 +234,8 @@ class Note(Record):
     folder: str = ""
     modified: Optional[datetime] = None
     uid: str = ""
+
+    HASH_EXCLUDE: ClassVar[Tuple[str, ...]] = ("uid", "folder")
 
     @classmethod
     def _revive(cls, name: str, value: Any) -> Any:

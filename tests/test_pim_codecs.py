@@ -123,3 +123,11 @@ def test_models_normalize_and_match():
     assert note.normalized().body == "b" and Note.from_dict(note.to_dict()) == note
     assert note.fingerprint() == Note("T", "b").fingerprint()
     assert Task.from_dict({"summary": "s", "due": "2026-01-01", "categories": ["a"], "bogus": 1}) == Task("s", due=date(2026, 1, 1), categories=("a",))
+
+
+def test_note_fingerprint_ignores_folder_but_match_key_uses_title():
+    device = Note("Ideas", "body")
+    remote = Note("Ideas", "body", folder="Jornada", uid="x1")
+    assert device.fingerprint() == remote.fingerprint()
+    assert device.match_key() == remote.match_key() == "note|ideas"
+    assert Note("Ideas", "other").fingerprint() != device.fingerprint()

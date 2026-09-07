@@ -11,6 +11,7 @@ from .rapi import RapiClient
 from .sync.accounts import (Account, AccountError, delete_secret, find_account, load_accounts, read_secret,
                             remove_account, save_accounts, state_path, sync_dir, update_secret, upsert_account,
                             validate_name)
+from .sync.base import StoreError
 from .sync.engine import Direction, Options, Prefer, apply, plan, refresh_hashes
 from .sync.registry import BuildContext, ModuleSpec, load_modules, module_for
 from .sync.state import load_state, save_state
@@ -192,7 +193,7 @@ def cmd_run(args: argparse.Namespace, connect: Callable[[argparse.Namespace], Ra
             return run_sync(account, module, None, secrets, context, options, args.dry_run, state_file)
         with connect(args) as client:
             return run_sync(account, module, client, secrets, context, options, args.dry_run, state_file)
-    except AccountError as exc:
+    except (AccountError, StoreError) as exc:
         sys.stderr.write(f"error: {exc}\n")
         return 1
 
