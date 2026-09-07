@@ -42,6 +42,8 @@ jobs:
           python3 tests/serve_fake.py 60 > /tmp/port &
           sleep 3
           macapp/.build/debug/SelfTest rapi "$(cat /tmp/port)"
+      - name: CEDB record codec self-test (Swift pack/unpack vs librapi2 layout)
+        run: macapp/.build/debug/SelfTest cedb x
       - name: Send-mirror format parity (Swift writer vs Python validator)
         run: |
           PAR=$(mktemp -d)

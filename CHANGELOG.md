@@ -8,6 +8,29 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **Sync** (`jornada sync`, the app's **Sync** pane): two-way synchronization of
+  Pocket Outlook Calendar, Contacts and Tasks with Apple Calendar / Reminders /
+  Contacts, Google Calendar / Contacts / Tasks, Microsoft 365 (Exchange Online,
+  To Do) and any CalDAV / CardDAV server; a POP3/SMTP bridge that lets the
+  device's own Inbox use IMAP accounts, Gmail, Microsoft 365 (XOAUTH2) and
+  Apple Mail; notes (`.txt` on the device) with Apple Notes, Logseq and Bear;
+  documents (`.txt`/`.rtf`) with Word on OneDrive, Google Docs and Pages;
+  spreadsheets (`.csv`) with Excel on OneDrive, Google Sheets and Numbers; and
+  SQLite tables with Pocket Access object-store databases. A three-way engine
+  with content fingerprints, natural-key pairing on first sync, conflict
+  preference, one-way modes and dry runs; JSON snapshots of a device database
+  before its first write. Account settings under `~/.jornada-link/sync/`,
+  secrets in 0600 files, OAuth with the user's own client registration.
+  See `docs/sync.md`.
+
+- **Object-store databases** (`jornada db ls|dump|snapshot|restore`): the RAPI
+  database calls (`CeFindAllDatabases`, `CeOpenDatabase`, `CeCreateDatabase`,
+  `CeDeleteDatabase`, `CeReadRecordProps`, `CeWriteRecordProps`,
+  `CeDeleteRecord`, `CeSeekDatabase`) in the librapi2 0.9.x wire format, a
+  CEPROPVAL record codec, and Pocket Outlook record codecs from the SynCE
+  property tables — in Python and Swift, verified against each other through
+  the fake device (`SelfTest rapi`, `SelfTest cedb`).
+
 - **Drag-and-drop into folders** in the app's Files pane: drop Finder files
   onto a folder row to upload them *into* that folder (dropping on blank space
   still targets the folder being browsed), and drag device files or folders

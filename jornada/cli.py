@@ -15,6 +15,7 @@ from .constants import DEFAULT_REMOTE_IP, RAPI_PORT
 from .dccm import DccmServer
 from .rapi import RapiClient, RapiError
 from .state import DEFAULT_STATE_PATH, read_state
+from .sync.accounts import AccountError
 from .transport import TransportError
 
 
@@ -477,6 +478,10 @@ def build_parser() -> argparse.ArgumentParser:
 
     from .usb_cli import add_parser as add_usb_parser
     add_usb_parser(sub)
+    from .db_cli import add_parser as add_db_parser
+    add_db_parser(sub, _connect)
+    from .sync_cli import add_parser as add_sync_parser
+    add_sync_parser(sub, _connect)
 
     p = sub.add_parser("probe", help="sniff the serial line (no root needed)")
     p.add_argument("device")
@@ -496,6 +501,9 @@ def main(argv: Optional[List[str]] = None) -> int:
     try:
         return args.func(args)
     except (RapiError, TransportError) as exc:
+        sys.stderr.write(f"error: {exc}\n")
+        return 1
+    except AccountError as exc:
         sys.stderr.write(f"error: {exc}\n")
         return 1
 

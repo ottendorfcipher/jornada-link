@@ -12,6 +12,8 @@ from typing import Iterator, List, Optional
 
 from . import password as pw
 from . import transport, wire
+from .rapi_database import DatabaseCalls
+from .rapi_errors import RapiError  # noqa: F401  (re-exported)
 from .constants import (
     CMD_CLOSE_HANDLE,
     CMD_CREATE_DIRECTORY,
@@ -54,14 +56,6 @@ from .constants import (
     SIZEOF_SYSTEM_POWER_STATUS_EX,
     WRITE_CHUNK,
 )
-
-
-class RapiError(RuntimeError):
-    """A RAPI call failed; ``last_error`` is the Win32 error code if known."""
-
-    def __init__(self, message: str, last_error: int = 0) -> None:
-        super().__init__(message)
-        self.last_error = last_error
 
 
 @dataclass(frozen=True)
@@ -107,7 +101,7 @@ class Reply:
     reader: wire.Reader
 
 
-class RapiClient:
+class RapiClient(DatabaseCalls):
     def __init__(self, ip: str, port: int = RAPI_PORT, timeout: float = RAPI_RECV_TIMEOUT_S) -> None:
         self._ip = ip
         self._port = port

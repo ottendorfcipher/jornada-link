@@ -115,9 +115,9 @@ public final class RapiClient {
 
     public func close() { socket.close() }
 
-    // MARK: - Core call
+    // MARK: - Core call (internal so extensions in other files can build on them)
 
-    private func call(_ command: UInt32, _ payload: Data = Data()) throws -> WireReader {
+    func call(_ command: UInt32, _ payload: Data = Data()) throws -> WireReader {
         guard socket.isOpen else { throw RapiError.notConnected }
         var writer = WireWriter()
         writer.u32(command)
@@ -132,20 +132,20 @@ public final class RapiClient {
         return reader
     }
 
-    private struct Reply {
+    struct Reply {
         let lastError: UInt32
         let returnValue: UInt32
         var reader: WireReader
     }
 
-    private func callSimple(_ command: UInt32, _ payload: Data = Data()) throws -> Reply {
+    func callSimple(_ command: UInt32, _ payload: Data = Data()) throws -> Reply {
         var reader = try call(command, payload)
         let lastError = try reader.u32()
         let returnValue = try reader.u32()
         return Reply(lastError: lastError, returnValue: returnValue, reader: reader)
     }
 
-    private func checkBool(_ what: String, _ reply: Reply) throws {
+    func checkBool(_ what: String, _ reply: Reply) throws {
         guard reply.returnValue != 0 else {
             throw RapiError.remote(what, winError: reply.lastError)
         }

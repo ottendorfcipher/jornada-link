@@ -15,21 +15,29 @@ from typing import Dict, Optional, Set
 from jornada import wire
 from jornada.constants import (
     CMD_CLOSE_HANDLE,
+    CMD_CREATE_DATABASE,
     CMD_CREATE_DIRECTORY,
     CMD_CREATE_FILE,
     CMD_CREATE_PROCESS,
     CMD_CREATE_SHORTCUT,
+    CMD_DELETE_DATABASE,
     CMD_DELETE_FILE,
+    CMD_DELETE_RECORD,
+    CMD_FIND_ALL_DATABASES,
     CMD_FIND_ALL_FILES,
     CMD_GET_FILE_ATTRIBUTES,
     CMD_GET_STORE_INFORMATION,
     CMD_GET_SYSTEM_POWER_STATUS_EX,
     CMD_GET_VERSION_EX,
     CMD_MOVE_FILE,
+    CMD_OPEN_DATABASE,
     CMD_READ_FILE,
+    CMD_READ_RECORD_PROPS,
+    CMD_SEEK_DATABASE,
     CMD_SYNC_TIME_TO_PC,
     CMD_REMOVE_DIRECTORY,
     CMD_WRITE_FILE,
+    CMD_WRITE_RECORD_PROPS,
     CREATE_ALWAYS,
     DCCM_PING,
     FAF_ATTRIBUTES,
@@ -49,6 +57,7 @@ from jornada.constants import (
 )
 from jornada.info import DeviceInfo, build_info_packet
 from jornada.transport import recv_exact, recv_frame, send_frame
+from tests.fake_cedb import FakeDatabaseStore
 
 ERROR_FILE_NOT_FOUND = 2
 ERROR_PATH_NOT_FOUND = 3
@@ -112,8 +121,10 @@ def _read_optional_string(reader: wire.Reader) -> Optional[str]:
 class FakeRapiServer:
     """Serves RAPI on 127.0.0.1:<port> in a background thread."""
 
-    def __init__(self, fs: Optional[FakeFilesystem] = None, password: Optional[str] = None, key: int = 0x42) -> None:
+    def __init__(self, fs: Optional[FakeFilesystem] = None, password: Optional[str] = None, key: int = 0x42,
+                 db: Optional[FakeDatabaseStore] = None) -> None:
         self.fs = fs or FakeFilesystem()
+        self.db = db or FakeDatabaseStore()
         self.password = password
         self.key = key
         self.launched: list = []
@@ -186,6 +197,14 @@ class FakeRapiServer:
             CMD_GET_SYSTEM_POWER_STATUS_EX: self._get_power_status,
             CMD_SYNC_TIME_TO_PC: self._sync_time,
             CMD_CREATE_SHORTCUT: self._create_shortcut,
+            CMD_FIND_ALL_DATABASES: self.db.find_all_databases,
+            CMD_OPEN_DATABASE: self.db.open_database,
+            CMD_CREATE_DATABASE: self.db.create_database,
+            CMD_DELETE_DATABASE: self.db.delete_database,
+            CMD_READ_RECORD_PROPS: self.db.read_record_props,
+            CMD_WRITE_RECORD_PROPS: self.db.write_record_props,
+            CMD_DELETE_RECORD: self.db.delete_record,
+            CMD_SEEK_DATABASE: self.db.seek_database,
         }.get(command)
         if handler is None:
             return wire.u32(1) + wire.u32(0x80004001)  # E_NOTIMPL as result_2
@@ -274,7 +293,7 @@ class FakeRapiServer:
 
     def _close_handle(self, reader: wire.Reader) -> bytes:
         handle = reader.u32()
-        if self._handles.pop(handle, None) is None:
+        if self._handles.pop(handle, None) is None and not self.db.close(handle):
             return _ok(0, last_error=ERROR_INVALID_HANDLE)
         return _ok(1)
 

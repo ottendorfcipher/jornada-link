@@ -6,10 +6,11 @@ import JornadaCore
 /// Python fake ActiveSync client. Usage:
 ///   SelfTest rapi <port>
 ///   SelfTest dccm <port>     (listens; exits 0 once a device handshakes + 2 pings)
+///   SelfTest cedb x          (CEDB record codec against tests/test_cedb.py; no network)
 let arguments = CommandLine.arguments
 guard arguments.count >= 3 else {
     FileHandle.standardError.write(
-        Data("usage: SelfTest rapi <port> | dccm <port> | gpib <port> | mirror <dir> | runner <n> | usb-profiles <file> | usb <n>\n".utf8))
+        Data("usage: SelfTest rapi <port> | dccm <port> | gpib <port> | cedb x | mirror <dir> | runner <n> | usb-profiles <file> | usb <n>\n".utf8))
     exit(2)
 }
 // rapi/dccm need a TCP port; mirror/runner take a path or placeholder instead.
@@ -23,6 +24,176 @@ var failures = 0
 func check(_ name: String, _ condition: Bool) {
     print("\(condition ? "PASS" : "FAIL")  \(name)")
     if !condition { failures += 1 }
+}
+
+/// True when `body` throws (for the negative-path checks).
+func fails(_ body: () throws -> Void) -> Bool {
+    do { try body() } catch { return true }
+    return false
+}
+
+// MARK: - Object-store databases (records seeded by tests/serve_fake.py)
+
+// Pocket Outlook property ids (jornada/pim/ids.py).
+let subjectId: UInt16 = 0x0037, notesId: UInt16 = 0x0017, apptStartId: UInt16 = 0x420D
+let apptDurationId: UInt16 = 0x4213, apptLocationId: UInt16 = 0x4208
+let firstNameId: UInt16 = 0x3A06, lastNameId: UInt16 = 0x3A11, fullNameId: UInt16 = 0x4013
+let sensitivityId: UInt16 = 0x0004, birthdayId: UInt16 = 0x4001
+
+func databaseChecks(_ client: RapiClient) throws {
+    let databases = try client.findAllDatabases()
+    let counts = Dictionary(databases.map { ($0.name, $0.numRecords) }, uniquingKeysWith: { first, _ in first })
+    check("findAllDatabases lists the three seeded databases",
+          counts == ["Appointments Database": 2, "Contacts Database": 1, "Tasks Database": 1])
+    check("listing carries oids and modification dates", databases.allSatisfy { $0.oid != 0 && $0.lastModified != nil })
+    let appointments = databases.first { $0.name == "Appointments Database" }
+    check("Appointments Database is listed", appointments != nil)
+    guard let appointments else { return }
+
+    let handle = try client.openDatabase(oid: appointments.oid)
+    let dentist = try client.readRecord(handle: handle)
+    let standup = try client.readRecord(handle: handle)
+    check("Dentist: subject, start, duration, notes",
+          dentist?.string(subjectId) == "Dentist" && dentist?.filetime(apptStartId) == 0x01D9_E0F0_9B2C_3D4E
+          && dentist?.int(apptDurationId) == 30 && dentist?.blob(notesId) == Data("bring card\r\n".utf8))
+    check("Standup: subject, location, start, duration",
+          standup?.string(subjectId) == "Standup" && standup?.string(apptLocationId) == "Room 4"
+          && standup?.filetime(apptStartId) == 0x01D9_E0F1_0000_0000 && standup?.int(apptDurationId) == 15)
+    check("readRecord is nil at the end of the database", try client.readRecord(handle: handle) == nil)
+    try seekChecks(client, handle: handle, first: dentist?.oid, last: standup?.oid)
+    try client.closeHandle(handle)
+    check("reading after close throws", fails { _ = try client.readRecord(handle: handle) })
+    check("opening an unknown oid throws", fails { _ = try client.openDatabase(oid: 0xDEAD) })
+    try contactChecks(client)
+    try scratchDatabaseChecks(client)
+}
+
+func seekChecks(_ client: RapiClient, handle: UInt32, first: UInt32?, last: UInt32?) throws {
+    let beginning = try client.seekDatabase(handle: handle, type: .beginning)
+    check("seek beginning is index 0 of the first record", beginning.index == 0 && beginning.oid == first)
+    let end = try client.seekDatabase(handle: handle, type: .end)
+    check("seek end is index 1 of the last record", end.index == 1 && end.oid == last)
+    check("read after seek end gives Standup", try client.readRecord(handle: handle)?.string(subjectId) == "Standup")
+    check("seek current -2 returns to index 0", try client.seekDatabase(handle: handle, type: .current, value: -2).index == 0)
+    check("seek by oid finds the record", try client.seekDatabase(handle: handle, type: .oid, value: Int(end.oid)).oid == end.oid)
+    check("seek past the end reports oid 0", try client.seekDatabase(handle: handle, type: .beginning, value: 99).oid == 0)
+}
+
+func contactChecks(_ client: RapiClient) throws {
+    guard let contacts = try client.findDatabase(named: "contacts database") else {
+        check("findDatabase(named:) is case-insensitive", false)
+        return
+    }
+    check("findDatabase(named:) is case-insensitive", contacts.name == "Contacts Database" && contacts.numRecords == 1)
+    let handle = try client.openDatabase(oid: contacts.oid)
+    defer { try? client.closeHandle(handle) }
+    let grace: [PropVal] = [
+        .string(firstNameId, "Grace"), .string(lastNameId, "Hopper"), .string(fullNameId, "Grace Hopper"),
+        .i2(sensitivityId, 1), .filetime(birthdayId, 0x01A4_5C6E_9A8B_0000), .blob(notesId, Data("COBOL\r\n".utf8)),
+    ]
+    let oid = try client.writeRecord(handle: handle, props: grace)
+    check("writeRecord returns a new oid", oid != 0)
+    let (info, records) = try client.readAllRecords(named: "Contacts Database")
+    check("readAllRecords(named:) sees both contacts", info.numRecords == 2 && records.count == 2)
+    check("seeded contact is intact", records.first { $0.oid != oid }?.string(fullNameId) == "Ada Lovelace")
+    let written = records.first { $0.oid == oid }
+    check("string values round-trip", written?.string(firstNameId) == "Grace" && written?.string(fullNameId) == "Grace Hopper")
+    check("i2 value round-trips", written?.int(sensitivityId) == 1)
+    check("filetime value round-trips", written?.filetime(birthdayId) == 0x01A4_5C6E_9A8B_0000)
+    check("blob value round-trips", written?.blob(notesId) == Data("COBOL\r\n".utf8))
+
+    let update: [PropVal] = [.string(lastNameId, "Murray"), .deleted(propId: notesId, kind: .blob)]
+    check("update keeps the oid", try client.writeRecord(handle: handle, props: update, oid: oid) == oid)
+    let updated = try client.readAllRecords(named: "Contacts Database").1.first { $0.oid == oid }
+    check("PROPDELETE removed the note and kept the rest",
+          updated?.get(notesId) == nil && updated?.string(lastNameId) == "Murray" && updated?.string(firstNameId) == "Grace")
+    check("updating an unknown oid throws", fails { _ = try client.writeRecord(handle: handle, props: update, oid: 0x7777) })
+    try client.deleteRecord(handle: handle, oid: oid)
+    check("deleteRecord leaves the seeded contact", try client.findDatabase(named: "Contacts Database")?.numRecords == 1)
+    check("deleting the record again throws", fails { try client.deleteRecord(handle: handle, oid: oid) })
+}
+
+func scratchDatabaseChecks(_ client: RapiClient) throws {
+    let bySubject = DatabaseInfo.SortSpec(propid: Cedb.propid(subjectId, .string), flags: 0)
+    let oid = try client.createDatabase(named: "Swift Scratch", type: 0x300, sortSpecs: [bySubject])
+    let listed = try client.findAllDatabases(type: 0x300, flags: RapiClient.Fad.listing | RapiClient.Fad.sortSpecs)
+    check("createDatabase shows up with its type and sort spec",
+          listed.map(\.oid) == [oid] && listed.first?.numSortOrder == 1
+          && listed.first?.sortSpecs.count == 4 && listed.first?.sortSpecs.first == bySubject)
+    check("creating a duplicate database throws", fails { _ = try client.createDatabase(named: "swift scratch") })
+    try client.deleteDatabase(oid: oid)
+    check("deleteDatabase removes it", try client.findDatabase(named: "Swift Scratch") == nil)
+    check("deleting a missing database throws", fails { try client.deleteDatabase(oid: oid) })
+}
+
+// MARK: - CEDB record codec (tests/test_cedb.py, no network)
+
+/// The 60-byte layout tests/test_cedb.py::test_pack_layout_matches_librapi2 expects.
+func canonicalRecordBytes() -> Data {
+    var expected = WireWriter()
+    expected.u32(0x4223_0002); expected.u16(0); expected.u16(0); expected.u32(0); expected.u32(0)    // i2 0x4223 = 0
+    expected.u32(0x0037_001F); expected.u16(0); expected.u16(0); expected.u32(48); expected.u32(0)   // string at 48
+    expected.u32(0x0017_0041); expected.u16(0); expected.u16(0); expected.u32(3); expected.u32(56)   // 3-byte blob at 56
+    expected.bytes(WireWriter.wstr("Hi")); expected.bytes(Data([0, 0]))                               // "Hi\0" + pad
+    expected.bytes(Data("abc".utf8)); expected.bytes(Data([0]))                                       // "abc" + pad
+    return expected.data
+}
+
+/// One hand-built CEPROPVAL entry.
+func entryBytes(_ cepropid: UInt32, flags: UInt16, low: UInt32, high: UInt32) -> Data {
+    var writer = WireWriter()
+    writer.u32(cepropid); writer.u16(0); writer.u16(flags); writer.u32(low); writer.u32(high)
+    return writer.data
+}
+
+func unpackRejects(_ data: Data, count: Int = 1) -> Bool {
+    do { _ = try Cedb.unpack(data, count: count) } catch is CedbError { return true } catch { return false }
+    return false
+}
+
+func packRejects(_ prop: PropVal) -> Bool {
+    do { _ = try Cedb.pack([prop]) } catch is CedbError { return true } catch { return false }
+    return false
+}
+
+let everyKind: [PropVal] = [
+    .i2(1, -5), .i2(1, 0x7FFF), .ui2(2, 0xFFFF), .i4(3, -2_000_000_000), .ui4(4, 0xFFFF_FFFF),
+    .bool(5, true), .bool(5, false), .r8(6, 2.5), .filetime(7, 0x01D9_E0F0_9B2C_3D4E),
+    .string(8, ""), .string(8, "héllo wörld — ünïcode"), .blob(9, Data()), .blob(9, Data([0, 1, 2])),
+    .blob(9, Data((0..<768).map { UInt8($0 % 256) } + [0x78])),
+]
+
+func cedbChecks() throws {
+    let props: [PropVal] = [.i2(0x4223, 0), .string(0x0037, "Hi"), .blob(0x0017, Data("abc".utf8))]
+    let packed = try Cedb.pack(props)
+    check("canonical record packs to 60 bytes", packed.count == 60)
+    check("canonical layout matches librapi2 byte for byte", packed == canonicalRecordBytes())
+    check("canonical record unpacks to the same props", try Cedb.unpack(packed, count: 3) == props)
+    check("align rounds up to four", [0, 1, 3, 4, 5, 8, 13].map(Cedb.align) == [0, 4, 4, 4, 8, 8, 16])
+    check("propid composition", Cedb.propid(0x4223, .i2) == 0x4223_0002 && PropVal.string(0x37, "x").cepropid == 0x0037_001F)
+    for prop in everyKind {
+        check("round trip \(prop.kind.name) \(prop.value)", try Cedb.unpack(Cedb.pack([prop]), count: 1) == [prop])
+    }
+    let many = (1...11).map { PropVal.string(UInt16($0), String(repeating: "s", count: $0)) }
+        + [PropVal.blob(99, Data(repeating: 0x7A, count: 7))]
+    check("many properties keep order and alignment", try Cedb.unpack(Cedb.pack(many), count: many.count) == many)
+    let gone = PropVal.deleted(propId: 0x0017, kind: .blob)
+    let goneBack = try Cedb.unpack(Cedb.pack([gone]), count: 1)
+    check("deleted property carries its flag through packing", gone.value == .blob(Data()) && goneBack == [gone])
+    let missing = try Cedb.unpack(entryBytes(0x0001_0002, flags: Cedb.propNotFound, low: 0, high: 0), count: 1)
+    check("PROPNOTFOUND unpacks as missing", missing == [PropVal(propId: 1, kind: .i2, value: .missing, flags: Cedb.propNotFound)])
+    let unknown = try Cedb.unpack(entryBytes(0x0001_007F, flags: 0, low: 0x0302_0100, high: 0x0706_0504), count: 1)
+    check("unknown type keeps its raw union bytes",
+          unknown.first?.kind == .unknown(0x7F) && unknown.first?.value == .raw(Data([0, 1, 2, 3, 4, 5, 6, 7]))
+          && unknown.first?.kind.name == "0x007f")
+    check("bad string offset is rejected", unpackRejects(entryBytes(0x0037_001F, flags: 0, low: 999, high: 0)))
+    check("bad blob range is rejected", unpackRejects(entryBytes(0x0017_0041, flags: 0, low: 100, high: 16)))
+    check("short buffer is rejected", unpackRejects(Data(count: 15)))
+    check("ui2 with a signed value is rejected at pack", packRejects(PropVal(propId: 1, kind: .ui2, value: .int(-1))))
+    check("unknown type is rejected at pack", packRejects(PropVal(propId: 1, kind: .unknown(0x7F), value: .uint(1))))
+    let stamp = Date(timeIntervalSince1970: 1_700_000_000.5)
+    check("filetime helpers round-trip",
+          FileTime.toDate(ticks: 0) == nil && FileTime.toDate(ticks: FileTime.fromDate(stamp)) == stamp)
 }
 
 switch arguments[1] {
@@ -70,6 +241,8 @@ case "rapi":
         var missingFailed = false
         do { _ = try client.download("\\nope.txt") { _ in } } catch { missingFailed = true }
         check("missing file raises", missingFailed)
+
+        try databaseChecks(client)
     } catch {
         check("unexpected error: \(error)", false)
     }
@@ -120,6 +293,14 @@ case "gpib":
         gateway.close()
     } catch {
         check("gpib self-test threw \(error)", false)
+    }
+
+case "cedb":
+    // Record codec against the canonical layout in tests/test_cedb.py (no network).
+    do {
+        try cedbChecks()
+    } catch {
+        check("unexpected error: \(error)", false)
     }
 
 case "mirror":
