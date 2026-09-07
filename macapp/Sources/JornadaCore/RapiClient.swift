@@ -311,8 +311,15 @@ public final class RapiClient {
     }
 
     /// CeSyncTimeToPc: set the device clock to this machine's current time.
-    public func syncTimeFromMac() throws {
-        let ticks = UInt64((Date().timeIntervalSince1970 * 10_000_000) + 116_444_736_000_000_000)
+    /// CeSyncTimeToPc: set the device's date and time from this Mac. The
+    /// FILETIME carries both, so both are set. By default the Mac's local
+    /// wall-clock is sent so the Jornada reads the same date and time as the
+    /// Mac; pass `useLocal: false` for true UTC when the device's own
+    /// time-zone is configured. Verify with `readDeviceClock()`.
+    public func syncTimeFromMac(useLocal: Bool = true) throws {
+        let offset = useLocal ? Double(TimeZone.current.secondsFromGMT()) : 0
+        let wall = Date().timeIntervalSince1970 + offset
+        let ticks = UInt64(wall * 10_000_000 + 116_444_736_000_000_000)
         var writer = WireWriter()
         writer.u32(UInt32(truncatingIfNeeded: ticks))
         writer.u32(UInt32(truncatingIfNeeded: ticks >> 32))
@@ -320,6 +327,16 @@ public final class RapiClient {
         writer.u32(10_000)
         var reader = try call(Command.syncTimeToPc, writer.data)
         _ = try reader.u32()  // last_error; command has no return value
+    }
+
+    /// Read the device clock by timestamping a throwaway file. The returned
+    /// Date's UTC calendar fields are the device's displayed date and time.
+    public func readDeviceClock(probeDir: String = "\\Temp") throws -> Date? {
+        let probe = probeDir + "\\.jornada_clock"
+        try upload(probe, data: Data())
+        defer { try? deleteFile(probe) }
+        let entries = try listDirectory(probeDir)
+        return entries.first(where: { $0.name == ".jornada_clock" })?.modified
     }
 
     // MARK: - System information

@@ -116,12 +116,33 @@ def test_not_connected():
         RapiClient("127.0.0.1", 1).call(0)
 
 
-def test_sync_time(client, device):
+def test_sync_time_defaults_to_local_wall_clock(client, device):
     import time
-    client.sync_time_from_mac(now=1_700_000_000.5)
+    fixed = 1_700_000_000.5
+    client.sync_time_from_mac(now=fixed)   # default use_local=True
+    offset = time.localtime(fixed).tm_gmtoff
+    assert device.clock_set_to == [fixed + offset]
+
+
+def test_sync_time_utc_mode(client, device):
+    client.sync_time_from_mac(now=1_700_000_000.5, use_local=False)
     assert device.clock_set_to == [1_700_000_000.5]
-    client.sync_time_from_mac()
+
+
+def test_sync_time_now_is_close(client, device):
+    import time
+    client.sync_time_from_mac(use_local=False)
     assert abs(device.clock_set_to[-1] - time.time()) < 5
+
+
+def test_read_device_clock_round_trip(client, device):
+    device.fs.dirs.add("\\Temp")
+    # Setting the clock then reading it back yields the same wall-clock fields.
+    client.sync_time_from_mac(now=1_700_000_000.0, use_local=False)
+    read_back = client.read_device_clock()
+    assert read_back is not None and abs(read_back - 1_700_000_000.0) < 2
+    # the probe file must not linger on the device
+    assert "\\Temp\\.jornada_clock" not in device.fs.files
 
 
 def test_create_shortcut(client, device):

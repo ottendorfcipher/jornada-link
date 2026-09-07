@@ -182,3 +182,14 @@ def test_rm_recursive_command(device, capsys):
 
 def test_rm_recursive_refuses_root(device):
     assert run(device, "rm", "-r", "\\") == 1
+
+
+def test_settime_reports_readback_and_utc(device, capsys):
+    device.fs.dirs.add("\\Temp")
+    assert run(device, "settime") == 0
+    out = capsys.readouterr().out
+    assert "device clock set from this Mac (local" in out
+    assert "device clock now reads" in out
+    assert "\\Temp\\.jornada_clock" not in device.fs.files   # probe cleaned up
+    assert run(device, "settime", "--utc") == 0
+    assert "set from this Mac (UTC" in capsys.readouterr().out

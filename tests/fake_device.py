@@ -55,6 +55,13 @@ ERROR_PATH_NOT_FOUND = 3
 ERROR_INVALID_HANDLE = 6
 ERROR_DIR_NOT_EMPTY = 145
 
+# The fake's legacy fixed last-write time, still used for files with no stamp.
+DEFAULT_FILETIME = (0x01D9E0F0 << 32) | 0x9B2C3D4E
+
+
+def _unix_to_filetime(unix_seconds: float) -> int:
+    return int(unix_seconds * 10_000_000) + 116_444_736_000_000_000
+
 JORNADA_INFO = DeviceInfo(
     os_version=0x0B02, build_number=11171, processor_type=0x2A11,
     partner_id_1=0x1234, partner_id_2=0x5678,
@@ -73,6 +80,7 @@ class OpenFile:
 class FakeFilesystem:
     files: Dict[str, bytes] = field(default_factory=dict)
     dirs: Set[str] = field(default_factory=lambda: {"\\"})
+    mtimes: Dict[str, int] = field(default_factory=dict)  # path -> FILETIME (100ns since 1601)
 
     def parent(self, path: str) -> str:
         head = path.rstrip("\\").rsplit("\\", 1)[0]
@@ -110,6 +118,9 @@ class FakeRapiServer:
         self.key = key
         self.launched: list = []
         self.clock_set_to: list = []
+        # Device clock (Unix seconds) once set; stamps newly-written files so a
+        # read_device_clock() round-trip is faithful. None until first sync.
+        self.clock: Optional[float] = None
         self.shortcuts: list = []
         self._handles: Dict[int, OpenFile] = {}
         self._next_handle = 0x100
@@ -187,12 +198,13 @@ class FakeRapiServer:
         entries = []
         for path in sorted(self.fs.dirs):
             if path != "\\" and self.fs.parent(path) == directory:
-                entries.append((path.rsplit("\\", 1)[-1], FILE_ATTRIBUTE_DIRECTORY, 0))
+                entries.append((path.rsplit("\\", 1)[-1], FILE_ATTRIBUTE_DIRECTORY, 0, DEFAULT_FILETIME))
         for path, data in sorted(self.fs.files.items()):
             if self.fs.parent(path) == directory:
-                entries.append((path.rsplit("\\", 1)[-1], FILE_ATTRIBUTE_ARCHIVE, len(data)))
+                stamp = self.fs.mtimes.get(path, DEFAULT_FILETIME)
+                entries.append((path.rsplit("\\", 1)[-1], FILE_ATTRIBUTE_ARCHIVE, len(data), stamp))
         out = wire.u32(0) + wire.u32(len(entries))
-        for name, attributes, size in entries:
+        for name, attributes, size, filetime in entries:
             encoded = wire.wstr(name)
             if flags & FAF_NAME:
                 out += wire.u32(len(encoded) // 2)
@@ -203,7 +215,7 @@ class FakeRapiServer:
             if flags & FAF_LASTACCESS_TIME:
                 out += wire.u32(0) * 2
             if flags & FAF_LASTWRITE_TIME:
-                out += wire.u32(0x9B2C3D4E) + wire.u32(0x01D9E0F0)
+                out += wire.u32(filetime & 0xFFFFFFFF) + wire.u32(filetime >> 32)
             if flags & FAF_SIZE_HIGH:
                 out += wire.u32(0)
             if flags & FAF_SIZE_LOW:
@@ -224,6 +236,8 @@ class FakeRapiServer:
             if not self.fs.exists_dir(self.fs.parent(path)):
                 return _ok(INVALID_HANDLE_VALUE, last_error=ERROR_PATH_NOT_FOUND)
             self.fs.files[path] = b""
+            if self.clock is not None:
+                self.fs.mtimes[path] = _unix_to_filetime(self.clock)
         handle = self._next_handle
         self._next_handle += 1
         self._handles[handle] = OpenFile(path=path, writable=writable)
@@ -319,7 +333,9 @@ class FakeRapiServer:
     def _sync_time(self, reader: wire.Reader) -> bytes:
         low, high = reader.u32(), reader.u32()
         ticks = (high << 32) | low
-        self.clock_set_to.append((ticks - 116_444_736_000_000_000) / 10_000_000)
+        wall = (ticks - 116_444_736_000_000_000) / 10_000_000
+        self.clock_set_to.append(wall)
+        self.clock = wall
         return wire.u32(0) + wire.u32(0)  # result_1, last_error (no return value)
 
     def _get_version(self, reader: wire.Reader) -> bytes:

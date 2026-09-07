@@ -277,17 +277,45 @@ class RapiClient:
         payload = wire.optional_string(shortcut_path) + wire.optional_string(target)
         self._check_bool("CeSHCreateShortcut", self._call_simple(CMD_CREATE_SHORTCUT, payload))
 
-    def sync_time_from_mac(self, now: Optional[float] = None) -> None:
-        """CeSyncTimeToPc: set the device clock to this machine's time."""
+    def sync_time_from_mac(self, now: Optional[float] = None, use_local: bool = True) -> None:
+        """CeSyncTimeToPc: set the device clock (date and time) from this Mac.
+
+        The FILETIME carries the full date and time, so both are set. By default
+        the Mac's **local** wall-clock is pushed, so the Jornada reads the same
+        date and time you see on the Mac. Windows CE stores time as UTC and
+        applies its own time-zone for display; a device whose zone is unset or
+        wrong would otherwise show the UTC date (a day ahead in the evening).
+        Pass ``use_local=False`` to send true UTC when the device's own
+        time-zone is correctly configured.
+        """
         import time as _time
         unix_now = _time.time() if now is None else now
-        ticks = int((unix_now * 10_000_000) + 116_444_736_000_000_000)
+        offset = _time.localtime(unix_now).tm_gmtoff if use_local else 0
+        ticks = int(((unix_now + offset) * 10_000_000) + 116_444_736_000_000_000)
         payload = (
             wire.u32(ticks & 0xFFFFFFFF) + wire.u32(ticks >> 32)
             + wire.u32(0) + wire.u32(10_000)
         )
         reader = self.call(CMD_SYNC_TIME_TO_PC, payload)
-        reader.u32()  # last_error (command has no return value)
+        reader.u32()  # last_error (SynCE synthesizes success; verify via read_device_clock)
+
+    def read_device_clock(self, probe_dir: str = "\\Temp") -> Optional[float]:
+        """Read the device's current clock by timestamping a throwaway file.
+
+        Returns the device wall-clock as a Unix timestamp whose UTC calendar
+        fields are the device's displayed date and time (CE stamps file times
+        from its own clock). ``None`` if the probe could not be read back.
+        """
+        probe = probe_dir.rstrip("\\") + "\\.jornada_clock"
+        try:
+            self.upload(probe, b"")
+            entry = next((e for e in self.listdir(probe_dir) if e.name == ".jornada_clock"), None)
+        finally:
+            try:
+                self.delete_file(probe)
+            except (RapiError, OSError):
+                pass
+        return entry.mtime if entry is not None else None
 
     # -- system information ---------------------------------------------------
     def get_version(self) -> VersionInfo:

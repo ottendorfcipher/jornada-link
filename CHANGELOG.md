@@ -6,6 +6,15 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+
+- **`settime` / Set Clock now syncs the date correctly.** It pushes the Mac's
+  local wall-clock (not UTC), so the Jornada reads the same date and time you
+  see on the Mac; previously the device kept UTC and showed tomorrow's date in
+  the evening. Both the CLI and the app now read the clock back and report the
+  device's resulting date and time. `settime --utc` sends UTC for devices whose
+  own time-zone is configured.
+
 ### Added
 
 - **USB link module** (`jornada usb`, the app's **USB** pane): a driver table of

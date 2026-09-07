@@ -96,7 +96,7 @@ cd jornada-link
 | `put LOCAL [REMOTE]` | Copy a file Mac → device |
 | `rm [-r]` / `mkdir` / `rmdir` / `mv` | File management (`rm -r` deletes a whole subtree) |
 | `run EXE [ARGS…]` | Launch a program on the device |
-| `settime` | Set the device clock from this Mac |
+| `settime [--utc]` | Set the Jornada's date and time from this Mac (local wall-clock; `--utc` if the device's zone is set) |
 | `shortcut LNK TARGET` | Create a `.lnk` on the device |
 | `backup DEST [PATH]` | Recursively mirror a device subtree + JSON manifest |
 | `restore SOURCE [PATH]` | Push a backup or sent-mirror tree back onto the device (`--dry-run`, `--force`) |

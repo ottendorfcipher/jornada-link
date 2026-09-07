@@ -213,8 +213,21 @@ def cmd_shortcut(args: argparse.Namespace) -> int:
 
 def cmd_settime(args: argparse.Namespace) -> int:
     with _connect(args) as client:
-        client.sync_time_from_mac()
-    print(f"device clock set from this Mac ({time.strftime('%Y-%m-%d %H:%M:%S')})")
+        client.sync_time_from_mac(use_local=not args.utc)
+        read_back = client.read_device_clock()
+    mode = "UTC" if args.utc else "local"
+    print(f"device clock set from this Mac ({mode}: {time.strftime('%Y-%m-%d %H:%M:%S')})")
+    if read_back is not None:
+        # read_back's UTC calendar fields are the device's displayed wall clock.
+        shown = time.strftime("%Y-%m-%d %H:%M:%S", time.gmtime(read_back))
+        print(f"device clock now reads {shown}")
+        drift = abs(read_back - (time.time() + (0 if args.utc else time.localtime().tm_gmtoff)))
+        if drift > 120:
+            print(f"warning: device clock is {drift:.0f}s from the intended time — "
+                  "if it is off by a whole number of hours, the Jornada's own "
+                  "time-zone is set; try `settime --utc`")
+    else:
+        print("(could not read the clock back to confirm)")
     return 0
 
 
@@ -425,7 +438,10 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("target", help=r"e.g. '\Program Files\Frotz\frotz.exe'")
     p.set_defaults(func=cmd_shortcut)
 
-    sub.add_parser("settime", help="set the Jornada's clock from this Mac").set_defaults(func=cmd_settime)
+    p = sub.add_parser("settime", help="set the Jornada's date and time from this Mac")
+    p.add_argument("--utc", action="store_true",
+                   help="send UTC instead of local time (use if the Jornada's own time-zone is set)")
+    p.set_defaults(func=cmd_settime)
 
     p = sub.add_parser("backup", help="recursively copy a device subtree to the Mac")
     p.add_argument("destination", help="local directory for the backup")

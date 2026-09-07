@@ -286,8 +286,22 @@ final class AppModel: ObservableObject {
     func setDeviceClock() {
         Task {
             do {
-                try await rapi.run("settime") { try $0.syncTimeFromMac() }
-                log("device clock set from this Mac")
+                let readBack: Date? = try await rapi.run("settime") {
+                    try $0.syncTimeFromMac()          // local wall-clock by default
+                    return try $0.readDeviceClock()
+                }
+                if let clock = readBack {
+                    // The device stamps files from its own clock; format in UTC
+                    // to recover the wall-clock fields it will display.
+                    let formatter = DateFormatter()
+                    formatter.dateFormat = "EEE, MMM d yyyy  HH:mm"
+                    formatter.timeZone = TimeZone(identifier: "UTC")
+                    let shown = formatter.string(from: clock)
+                    log("device clock set — Jornada now reads \(shown)")
+                    lastError = nil
+                } else {
+                    log("device clock set from this Mac (could not read it back to confirm)")
+                }
             } catch {
                 explainRapiFailure(error, context: "set clock")
             }
