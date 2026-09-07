@@ -1,10 +1,11 @@
-"""``jornada usb``: the USB doctor from the command line.
+"""``jornada usb``: the status of the USB/serial link, auto-detected.
 
-Actions: ``doctor`` (default) explains what is attached and which port the link
-will use; ``list`` is the bare device table; ``pick`` prints the recommended
-port for scripts (``bin/jornada-ppp`` calls it); ``pin``/``unpin`` manage the
-``~/.jornada-link/serial`` pin file; ``profiles`` dumps the driver table (the
-Swift parity check compares its own dump against this).
+``jornada usb`` (the default) prints which adapter is attached, which serial
+port the link will open, and anything the doctor thinks is wrong. ``pick``
+prints just the chosen port for scripts (``bin/jornada-ppp`` calls it);
+``pin``/``unpin`` are the manual override of that choice via the
+``~/.jornada-link/serial`` pin file. The handheld is recognised from the last
+dccm session; there is nothing to configure.
 """
 from __future__ import annotations
 
@@ -14,95 +15,70 @@ import os
 import stat
 import sys
 from dataclasses import asdict
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
-from . import usb_profiles
 from .state import DEFAULT_STATE_PATH, read_state
-from .usb_doctor import (LEVEL_ERROR, LEVEL_INFO, LEVEL_OK, LEVEL_WARN, Diagnosis, clear_pin,
-                         default_pin_path, diagnose, handheld_from_state, is_valid_serial_path,
-                         read_pin, write_pin)
+from .usb_doctor import (LEVEL_ERROR, LEVEL_WARN, Diagnosis, clear_pin, default_pin_path,
+                         diagnose, handheld_from_state, is_valid_serial_path, read_pin,
+                         write_pin)
 from .usb_registry import RegistryError, read_registry
 
-ACTIONS = ("doctor", "list", "pick", "pin", "unpin", "profiles")
-_LEVEL_MARK = {LEVEL_OK: "OK  ", LEVEL_INFO: "info", LEVEL_WARN: "WARN", LEVEL_ERROR: "ERR "}
+ACTIONS = ("status", "pick", "pin", "unpin")
 
 
-def _handheld(args: argparse.Namespace) -> Optional[usb_profiles.HandheldModel]:
-    if args.model:
-        model = usb_profiles.handheld(args.model)
-        if model is None:
-            known = ", ".join(m.key for m in usb_profiles.HANDHELD_MODELS)
-            raise SystemExit(f"unknown handheld model {args.model!r}; choose from: {known}")
-        return model
-    return handheld_from_state(read_state(DEFAULT_STATE_PATH))
-
-
-def _diagnosis(args: argparse.Namespace) -> Diagnosis:
+def _diagnosis() -> Diagnosis:
     try:
         devices = read_registry()
     except RegistryError as exc:
         raise SystemExit(f"cannot read the USB registry: {exc}") from exc
-    return diagnose(devices, pinned=read_pin(), handheld=_handheld(args))
+    handheld = handheld_from_state(read_state(DEFAULT_STATE_PATH))
+    return diagnose(devices, pinned=read_pin(), handheld=handheld)
 
 
 def diagnosis_as_dict(diag: Diagnosis) -> Dict[str, Any]:
-    """A JSON-friendly view of a :class:`Diagnosis`."""
+    """A JSON-friendly view of the status."""
+    adapter = next((item for item in diag.devices if item.classification is not None), None)
     return {
-        "devices": [{
-            "vid_pid": item.device.vid_pid,
-            "label": item.device.label,
-            "vendor": item.device.vendor,
-            "product": item.device.product,
-            "serial": item.device.serial,
-            "location_id": item.device.location_id,
-            "profile": item.classification.profile.key if item.classification else None,
-            "role": item.role,
-            "serial_nodes": [asdict(n) for n in item.device.serial_nodes],
-        } for item in diag.devices],
-        "candidates": [{
-            "path": c.path, "driver": c.driver, "writable": c.writable, "score": c.score,
-            "profile": c.classification.profile.key, "role": c.classification.role,
-        } for c in diag.candidates],
+        "adapter": None if adapter is None else {
+            "vid_pid": adapter.device.vid_pid,
+            "label": adapter.device.label,
+            "profile": adapter.classification.profile.key,
+            "serial": adapter.device.serial,
+        },
         "recommended": diag.recommended,
         "pinned": diag.pinned,
         "handheld": diag.handheld.key if diag.handheld else None,
-        "findings": [asdict(f) for f in diag.findings],
+        "findings": [asdict(f) for f in diag.findings if f.level in (LEVEL_WARN, LEVEL_ERROR)],
     }
 
 
-def format_list(diag: Diagnosis) -> List[str]:
-    if not diag.devices:
-        return ["no USB devices attached (hubs are not listed)"]
+def format_status(diag: Diagnosis) -> List[str]:
+    """The condensed status: adapter, port, handheld, and only real problems."""
+    adapter = next((item for item in diag.devices if item.classification is not None), None)
     lines = []
-    for item in diag.devices:
-        what = item.classification.profile.name if item.classification else "not a link device"
-        role = f" [{item.role}]" if item.role else ""
-        lines.append(f"{item.device.vid_pid}  {item.device.label}  — {what}{role}")
-        for node in item.device.serial_nodes:
-            marks = []
-            if node.path == diag.recommended:
-                marks.append("selected")
-            if node.path == diag.pinned:
-                marks.append("pinned")
-            if not node.writable:
-                marks.append("not openable")
-            suffix = f"  ({', '.join(marks)})" if marks else ""
-            lines.append(f"    {node.path}  driver {node.driver}{suffix}")
-    return lines
-
-
-def format_doctor(diag: Diagnosis) -> List[str]:
-    lines = []
-    if diag.handheld:
-        lines.append(f"handheld: {diag.handheld.name} — {diag.handheld.cpu}; "
-                     f"dock USB jack {'live' if diag.handheld.dock_usb else 'inert'} for this model")
+    if adapter is None:
+        lines.append("adapter : none — no USB-serial adapter attached")
     else:
-        lines.append("handheld: unknown (connect PC Link once, or pass --model, e.g. --model jornada-680e)")
-    lines.extend(format_list(diag))
-    lines.append("")
+        lines.append(f"adapter : {adapter.device.label} ({adapter.classification.profile.chip})")
+    if diag.recommended is None:
+        lines.append("port    : none available")
+    else:
+        candidate = next((c for c in diag.candidates if c.path == diag.recommended), None)
+        tags = []
+        if diag.pinned == diag.recommended:
+            tags.append("pinned")
+        if candidate is not None and not candidate.writable:
+            tags.append("root-only")
+        suffix = f"  [{', '.join(tags)}]" if tags else ""
+        driver = f"  driver {candidate.driver}" if candidate is not None else ""
+        lines.append(f"port    : {diag.recommended}{driver}{suffix}")
+    if diag.handheld:
+        lines.append(f"handheld: {diag.handheld.name}")
     for finding in diag.findings:
-        lines.append(f"{_LEVEL_MARK[finding.level]}  {finding.title}")
-        lines.append(f"      {finding.detail}")
+        if finding.level == LEVEL_ERROR:
+            lines.append(f"ERR   {finding.title} — {finding.detail}")
+        elif finding.level == LEVEL_WARN:
+            lines.append(f"WARN  {finding.title} — {finding.detail}")
     return lines
 
 
@@ -120,7 +96,7 @@ def _cmd_pin(args: argparse.Namespace) -> int:
     if not is_valid_serial_path(path):
         raise SystemExit(f"refusing {path!r}: only plain /dev/cu.* nodes can be pinned")
     if not _node_exists(path):
-        raise SystemExit(f"{path} is not an attached serial device (see `jornada usb list`)")
+        raise SystemExit(f"{path} is not an attached serial device (see `jornada usb`)")
     target = write_pin(path)
     print(f"pinned {path} in {target} — Connect and bin/jornada-ppp will use it")
     return 0
@@ -135,16 +111,12 @@ def _cmd_unpin() -> int:
 
 
 def run(args: argparse.Namespace) -> int:
-    action = args.action
-    if action == "profiles":
-        sys.stdout.write(usb_profiles.table_json())
-        return 0
-    if action == "pin":
+    if args.action == "pin":
         return _cmd_pin(args)
-    if action == "unpin":
+    if args.action == "unpin":
         return _cmd_unpin()
-    diag = _diagnosis(args)
-    if action == "pick":
+    diag = _diagnosis()
+    if args.action == "pick":
         if diag.recommended is None:
             sys.stderr.write("no USB-serial adapter found\n")
             return 1
@@ -152,17 +124,15 @@ def run(args: argparse.Namespace) -> int:
         return 0
     if args.json:
         print(json.dumps(diagnosis_as_dict(diag), indent=2, sort_keys=True))
-        return 0
-    lines = format_list(diag) if action == "list" else format_doctor(diag)
-    print("\n".join(lines))
-    return 0 if diag.worst_level != LEVEL_ERROR or action == "list" else 1
+    else:
+        print("\n".join(format_status(diag)))
+    return 1 if diag.worst_level == LEVEL_ERROR else 0
 
 
 def add_parser(sub: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None:
-    p = sub.add_parser("usb", help="USB doctor: which adapter carries the link, and what the dock's USB jack can do")
-    p.add_argument("action", nargs="?", default="doctor", choices=ACTIONS,
-                   help="doctor (default), list, pick, pin PATH, unpin, profiles")
+    p = sub.add_parser("usb", help="USB/Serial link status: which adapter and port carry the link (auto-detected)")
+    p.add_argument("action", nargs="?", default="status", choices=ACTIONS,
+                   help="status (default), pick (port only, for scripts), pin PATH, unpin")
     p.add_argument("path", nargs="?", help="serial node for `pin`, e.g. /dev/cu.usbserial-XXXX")
-    p.add_argument("--model", help="handheld model key, e.g. jornada-680e (default: last dccm session)")
-    p.add_argument("--json", action="store_true", help="machine-readable output for doctor/list")
+    p.add_argument("--json", action="store_true", help="machine-readable status")
     p.set_defaults(func=run)

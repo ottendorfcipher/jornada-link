@@ -6,6 +6,17 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+
+- **USB pane condensed to "USB/Serial"** — one status card (adapter, port,
+  link state, plus a single guidance line only when the doctor finds a real
+  problem), everything auto-detected. The handheld-model picker, per-device
+  tables, per-node pin buttons and the dock essay are gone from the app; the
+  port is chosen automatically. `jornada usb` shrinks to match: `status`
+  (default, `--json`), `pick`, `pin`, `unpin` — `doctor`, `list`, `profiles`
+  and `--model` are removed. The detection engine and its Swift/Python parity
+  check are unchanged.
+
 ### Fixed
 
 - **`settime` / Set Clock now syncs the date correctly.** It pushes the Mac's

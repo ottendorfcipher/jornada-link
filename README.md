@@ -103,7 +103,7 @@ cd jornada-link
 | *(automatic)* | Every `put`/`install`/app upload is also archived on the Mac — see below |
 | `install CAB` | Copy a `.cab` and launch the device installer (`wceload`) |
 | `probe DEVICE [BAUD] [SECONDS]` | Sniff the serial line (no root) |
-| `usb [doctor\|list\|pick\|pin PATH\|unpin\|profiles]` | USB doctor: which adapter carries the link, what the dock's USB jack can do, pin a port |
+| `usb [pick\|pin PATH\|unpin]` | USB/Serial link status, auto-detected: the adapter and port carrying the link (`pick` for scripts, `pin` to override) |
 | `ppplog [FILE]` | Decode a `pppd` record file into readable PPP frames |
 
 ## USB, the dock, and the 680e
@@ -113,11 +113,12 @@ SH-3 Jornada 680/680e/690/690e has **no USB silicon**, so for those models the
 USB jack carries nothing — the link runs over the DB-9 (or the sync cable)
 through a USB-serial adapter. The StrongARM 720/728 do enumerate on it, as a
 Windows CE USB Sync device macOS has no driver for. `jornada usb` (and the
-app's **USB** pane) identifies every adapter and Windows CE device on the bus,
-picks the best `/dev/cu.*` node (Apple's driver over a vendor extension, a node
-you can actually open, a dock-built-in bridge first), explains what it sees,
-and pins a port. Background, sources, pinout notes, and the dock-bridge retrofit
-that lets a 680e come up the dock's USB cable: [`docs/usb-link.md`](docs/usb-link.md).
+app's **USB/Serial** pane) simply reports the status of the link — which adapter
+is attached, which `/dev/cu.*` port it will open (chosen automatically: Apple's
+driver over a vendor extension, a node you can actually open, a dock-built-in
+bridge first), and how far the connection has come — flagging only real
+problems. Background, sources, pinout notes, and the dock-bridge retrofit that
+lets a 680e come up the dock's USB cable: [`docs/usb-link.md`](docs/usb-link.md).
 
 ## The macOS app
 

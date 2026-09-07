@@ -8,7 +8,7 @@ final class AppModel: ObservableObject {
         case overview = "Overview"
         case files = "Files"
         case transfers = "Transfers"
-        case usb = "USB"
+        case usb = "USB/Serial"
         case gpib = "GPIB"
         case logs = "Log"
         var id: String { rawValue }

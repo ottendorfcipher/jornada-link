@@ -21,47 +21,41 @@ def bus(monkeypatch, tmp_path):
     return devices
 
 
-def test_doctor_text_output(bus, capsys):
+def test_status_is_condensed_and_auto_detected(bus, capsys):
     assert cli.main(["usb"]) == 0
     out = capsys.readouterr().out
-    assert "handheld: unknown" in out
-    assert "0403:6001  FTDI FT232R USB UART" in out
-    assert "/dev/cu.usbserial-3  driver com.apple.DriverKit-AppleUSBFTDI  (selected)" in out
-    assert "not openable" in out and "root-only" in out and "WARN" in out and "OK  " in out
+    lines = [line for line in out.splitlines() if line.strip()]
+    assert lines[0].startswith("adapter : FTDI FT232R USB UART")
+    assert lines[1].startswith("port    : /dev/cu.usbserial-3")
+    assert "AppleUSBFTDI" in lines[1]
+    # only real problems are shown — no per-node tables, no OK/info chatter
+    assert "OK  " not in out and "info" not in out
+    assert "(selected)" not in out
+    assert len(lines) <= 6
 
 
-def test_doctor_with_model_and_json(bus, capsys):
-    assert cli.main(["usb", "doctor", "--model", "jornada-680e", "--json"]) == 0
+def test_status_json_shape(bus, capsys):
+    assert cli.main(["usb", "--json"]) == 0
     data = json.loads(capsys.readouterr().out)
-    assert data["handheld"] == "jornada-680e"
+    assert data["adapter"]["vid_pid"] == "0403:6001"
+    assert data["adapter"]["profile"] == "ftdi-ft232r"
     assert data["recommended"] == "/dev/cu.usbserial-3"
-    assert any("inert" in f["title"] for f in data["findings"])
-    ftdi = next(dev for dev in data["devices"] if dev["vid_pid"] == "0403:6001")
-    assert ftdi["profile"] == "ftdi-ft232r" and len(ftdi["serial_nodes"]) == 2
-    assert cli.main(["usb", "--model", "jornada-720"]) == 0
-    assert "dock USB jack live" in capsys.readouterr().out
+    assert data["handheld"] is None            # nothing connected, nothing to configure
+    assert all(f["level"] in ("warn", "error") for f in data["findings"])
 
 
-def test_unknown_model_is_rejected(bus):
-    with pytest.raises(SystemExit, match="unknown handheld model"):
-        cli.main(["usb", "--model", "jornada-9000"])
-
-
-def test_list_and_pick(bus, capsys):
-    assert cli.main(["usb", "list"]) == 0
-    out = capsys.readouterr().out
-    assert "FTDI FT232R" in out and "OK" not in out
-    assert cli.main(["usb", "pick"]) == 0
-    assert capsys.readouterr().out.strip() == "/dev/cu.usbserial-3"
-
-
-def test_pick_and_doctor_without_adapters(bus, monkeypatch, capsys):
+def test_no_adapter_is_an_error(bus, monkeypatch, capsys):
     monkeypatch.setattr(usb_cli, "read_registry", lambda: ())
+    assert cli.main(["usb"]) == 1
+    out = capsys.readouterr().out
+    assert "adapter : none" in out and "port    : none" in out
     assert cli.main(["usb", "pick"]) == 1
     assert "no USB-serial adapter" in capsys.readouterr().err
-    assert cli.main(["usb"]) == 1
-    assert "No USB-serial adapter found" in capsys.readouterr().out
-    assert cli.main(["usb", "list"]) == 0
+
+
+def test_pick_prints_only_the_port(bus, capsys):
+    assert cli.main(["usb", "pick"]) == 0
+    assert capsys.readouterr().out.strip() == "/dev/cu.usbserial-3"
 
 
 def test_pin_unpin_round_trip(bus, monkeypatch, tmp_path, capsys):
@@ -82,9 +76,11 @@ def test_pin_unpin_round_trip(bus, monkeypatch, tmp_path, capsys):
         cli.main(["usb", "pin"])
 
 
-def test_profiles_dump_matches_the_table(bus, capsys):
-    assert cli.main(["usb", "profiles"]) == 0
-    assert json.loads(capsys.readouterr().out) == usb_profiles.table()
+def test_removed_knobs_are_gone(bus):
+    # The surface is status/pick/pin/unpin only; no model picker, no dumps.
+    for argv in (["usb", "list"], ["usb", "profiles"], ["usb", "doctor"], ["usb", "--model", "jornada-680e"]):
+        with pytest.raises(SystemExit):
+            cli.main(argv)
 
 
 def test_registry_failure_is_explained(bus, monkeypatch):

@@ -75,15 +75,13 @@ the `SelfTest usb-profiles` parity check:
 The link uses the doctor's pick: `PppController.serialDevice()` in the app and
 `bin/jornada-ppp` (via `jornada usb pick`) both consult it before falling back
 to the first `/dev/cu.usbserial-*`. The pin file `~/.jornada-link/serial`
-(`jornada usb pin PATH`, or *Use this port* in the app) still overrides.
+(`jornada usb pin PATH`) still overrides; the app's USB/Serial pane only reports.
 
 ```bash
-./bin/jornada usb                      # doctor: devices, findings, chosen port
-./bin/jornada usb --model jornada-680e # the diagnosis for a given handheld
-./bin/jornada usb list                 # just the devices and their nodes
-./bin/jornada usb pick                 # the chosen port only (for scripts)
+./bin/jornada usb                      # status: adapter, port, and any real problem
+./bin/jornada usb --json               # the same, machine-readable
+./bin/jornada usb pick                 # the chosen port only (bin/jornada-ppp calls this)
 ./bin/jornada usb pin /dev/cu.usbserial-XXXX ; ./bin/jornada usb unpin
-./bin/jornada usb profiles             # the driver table as JSON
 ```
 
 The app's **USB** pane shows the same picture live (polled every few seconds

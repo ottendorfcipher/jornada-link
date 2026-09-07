@@ -1,258 +1,149 @@
 import JornadaCore
 import SwiftUI
 
-/// The USB pane: what is on the bus, which serial node the link will open, and
-/// what the dock's USB jack can do for the handheld in it. Same restrained style
-/// as the other panes — system colours, one default button.
+/// The USB/Serial pane: the status of the physical link, auto-detected.
+/// Which adapter is attached, which serial port the link will open, and how
+/// far the connection has come — nothing to configure. Problems the doctor
+/// finds surface as a single guidance line; the port is chosen automatically
+/// (`jornada usb pin` exists for the rare manual override).
 struct UsbView: View {
     @ObservedObject var model: AppModel
     @StateObject private var usb = UsbController()
 
     var body: some View {
-        VStack(spacing: 0) {
-            statusBar
-            Divider()
-            ScrollView {
-                VStack(spacing: 16) {
-                    devicesCard
-                    findingsCard
-                    dockCard
+        ScrollView {
+            VStack(spacing: 16) {
+                statusCard
+            }
+            .padding(20)
+            .frame(maxWidth: 640)
+            .frame(maxWidth: .infinity)
+        }
+        .toolbar {
+            ToolbarItem {
+                Button {
+                    usb.refresh()
+                } label: {
+                    Label("Refresh", systemImage: "arrow.clockwise")
                 }
-                .padding(20)
-                .frame(maxWidth: 720)
-                .frame(maxWidth: .infinity)
+                .help("Re-read the USB bus now (it is polled every few seconds while this pane is open)")
             }
         }
         .onAppear {
-            usb.connectedHandheld = model.device.flatMap {
-                UsbProfiles.identifyHandheld(hardware: $0.hardware, name: $0.name)
-            }
+            usb.connectedHandheld = Self.handheld(for: model.device)
             usb.startPolling()
         }
         .onDisappear { usb.stopPolling() }
         .onChange(of: model.device?.name) { _, _ in
-            usb.connectedHandheld = model.device.flatMap {
-                UsbProfiles.identifyHandheld(hardware: $0.hardware, name: $0.name)
-            }
+            usb.connectedHandheld = Self.handheld(for: model.device)
             usb.refresh()
         }
     }
 
-    // MARK: - Status bar
-
-    private var statusBar: some View {
-        HStack(spacing: 10) {
-            Circle()
-                .fill(Self.colour(for: usb.diagnosis?.worstLevel ?? .info))
-                .frame(width: 9, height: 9)
-            Text(usb.summary)
-                .font(.callout)
-                .lineLimit(1)
-            Spacer()
-            Picker("Handheld", selection: $usb.selectedModelKey) {
-                Text(usb.connectedHandheld.map { "Connected: \($0.name)" } ?? "Handheld: unknown").tag("")
-                ForEach(UsbProfiles.selectableHandhelds) { handheld in
-                    Text(handheld.name).tag(handheld.key)
-                }
-            }
-            .frame(width: 250)
-            .help("Which Jornada is docked — decides what the dock's USB jack can do")
-            Button {
-                usb.refresh()
-            } label: {
-                Label("Refresh", systemImage: "arrow.clockwise")
-            }
-            .help("Re-read the USB bus (it is also polled every few seconds while this pane is open)")
-        }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 7)
-        .background(.bar)
+    private static func handheld(for device: DccmListener.DeviceInfo?) -> HandheldModel? {
+        device.flatMap { UsbProfiles.identifyHandheld(hardware: $0.hardware, name: $0.name) }
     }
 
-    // MARK: - Devices
+    // MARK: - The one card
 
-    private var devicesCard: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            cardTitle("USB devices", symbol: "cable.connector")
-            if let devices = usb.diagnosis?.devices, !devices.isEmpty {
-                ForEach(devices) { item in
-                    Divider().padding(.leading, 44)
-                    deviceRow(item)
-                }
-            } else {
+    private var statusCard: some View {
+        VStack(spacing: 0) {
+            row(symbol: "cable.connector", title: "Adapter",
+                value: adapterText, status: adapterStatus)
+            Divider().padding(.leading, 44)
+            row(symbol: "terminal", title: "Port",
+                value: portText, status: portStatus)
+            Divider().padding(.leading, 44)
+            row(symbol: linkSymbol, title: "Link",
+                value: linkText, status: linkStatus)
+            if let guidance = usb.guidance {
                 Divider().padding(.leading, 44)
-                Text("No USB devices attached (hubs are not listed).")
-                    .font(.callout).foregroundStyle(.secondary)
-                    .padding(.horizontal, 14).padding(.vertical, 11)
-            }
-        }
-        .background(.background.secondary, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(.separator, lineWidth: 0.5))
-    }
-
-    private func deviceRow(_ item: UsbClassifiedDevice) -> some View {
-        HStack(alignment: .top, spacing: 12) {
-            Image(systemName: Self.symbol(for: item.role))
-                .font(.system(size: 17))
-                .foregroundStyle(item.classification == nil ? Color.secondary : Color(red: 0.16, green: 0.55, blue: 0.36))
-                .frame(width: 30)
-            VStack(alignment: .leading, spacing: 4) {
-                HStack(spacing: 8) {
-                    Text(item.device.label).font(.headline)
-                    Text(item.device.vidPid)
-                        .font(.system(.caption, design: .monospaced))
-                        .foregroundStyle(.secondary)
-                    if let role = item.role { roleBadge(role) }
-                }
-                Text(item.classification.map { "\($0.profile.name) — \($0.profile.chip)" } ?? "Not a link device")
-                    .font(.callout).foregroundStyle(.secondary)
-                if !item.device.serial.isEmpty {
-                    Text("Serial \(item.device.serial)").font(.caption).foregroundStyle(.secondary)
-                }
-                ForEach(item.device.serialNodes, id: \.path) { node in
-                    nodeRow(node)
-                }
-            }
-            Spacer()
-        }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 11)
-    }
-
-    private func nodeRow(_ node: UsbSerialNode) -> some View {
-        let selected = node.path == usb.diagnosis?.recommended
-        let pinned = node.path == usb.diagnosis?.pinned
-        return HStack(spacing: 8) {
-            Image(systemName: selected ? "checkmark.circle.fill" : "circle")
-                .foregroundStyle(selected ? Color.green : Color.secondary)
-            Text(node.path).font(.system(.callout, design: .monospaced))
-            Text(node.driver).font(.caption).foregroundStyle(.secondary)
-            if !node.writable {
-                Text("root-only").font(.caption).foregroundStyle(.orange)
-                    .help("Not openable by this user: the root pppd can use it, jornada probe cannot")
-            }
-            Spacer()
-            if pinned {
-                Button("Unpin") { usb.unpin() }.buttonStyle(.link)
-            } else if node.writable {
-                Button("Use this port") { usb.pin(node.path) }.buttonStyle(.link)
-            }
-        }
-        .padding(.top, 2)
-    }
-
-    private func roleBadge(_ role: UsbRole) -> some View {
-        Text(Self.roleLabel(role))
-            .font(.caption2.weight(.semibold))
-            .padding(.horizontal, 6).padding(.vertical, 2)
-            .background(.quaternary, in: Capsule())
-    }
-
-    // MARK: - Findings
-
-    private var findingsCard: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            cardTitle("Diagnosis", symbol: "stethoscope")
-            if let findings = usb.diagnosis?.findings, !findings.isEmpty {
-                ForEach(findings) { finding in
-                    Divider().padding(.leading, 44)
-                    HStack(alignment: .firstTextBaseline, spacing: 12) {
-                        Image(systemName: Self.symbol(for: finding.level))
-                            .foregroundStyle(Self.colour(for: finding.level))
-                            .frame(width: 30)
-                        VStack(alignment: .leading, spacing: 3) {
-                            Text(finding.title).font(.headline)
-                            Text(finding.detail).font(.callout).foregroundStyle(.secondary)
-                                .fixedSize(horizontal: false, vertical: true)
-                        }
-                        Spacer()
+                HStack(alignment: .firstTextBaseline, spacing: 12) {
+                    Image(systemName: guidance.level == .error ? "xmark.octagon.fill" : "exclamationmark.triangle.fill")
+                        .font(.system(size: 17))
+                        .foregroundStyle(guidance.level == .error ? Color.red : Color.orange)
+                        .frame(width: 30)
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(guidance.title).font(.headline)
+                        Text(guidance.detail).font(.callout).foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
                     }
-                    .padding(.horizontal, 14).padding(.vertical, 11)
+                    Spacer()
                 }
-            } else {
-                Divider().padding(.leading, 44)
-                Text(usb.lastError ?? "Reading the USB bus…")
-                    .font(.callout).foregroundStyle(.secondary)
-                    .padding(.horizontal, 14).padding(.vertical, 11)
+                .padding(.horizontal, 14).padding(.vertical, 11)
             }
         }
         .background(.background.secondary, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(.separator, lineWidth: 0.5))
+        .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous)
+            .strokeBorder(.separator, lineWidth: 0.5))
     }
 
-    // MARK: - The dock
-
-    private var dockCard: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            cardTitle("The dock's USB jack", symbol: "dock.rectangle")
-            Group {
-                if let handheld = usb.effectiveHandheld {
-                    Text("\(handheld.name) — \(handheld.cpu), \(handheld.os).").font(.callout)
-                    Text(handheld.notes).font(.callout).foregroundStyle(.secondary)
-                } else {
-                    Text("The HP F1822A dock is passive: its DB-9 carries the handheld's RS-232 lines and its USB-B jack "
-                         + "is wired straight to the connector's USB pins. Only a handheld with its own USB device "
-                         + "controller (the StrongARM 710/720/728) drives those pins; the SH-3 680/680e/690/690e "
-                         + "has none, so for them the jack is inert and the link runs over the DB-9 through a "
-                         + "USB-serial adapter.")
-                        .font(.callout).foregroundStyle(.secondary)
-                }
-                Text("Details, pinout and the dock-bridge retrofit: docs/usb-link.md in the repository.")
-                    .font(.caption).foregroundStyle(.secondary)
-            }
-            .fixedSize(horizontal: false, vertical: true)
-            .padding(.horizontal, 14).padding(.bottom, 12)
-        }
-        .background(.background.secondary, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(.separator, lineWidth: 0.5))
-    }
-
-    // MARK: - Helpers
-
-    private func cardTitle(_ title: String, symbol: String) -> some View {
+    private func row(symbol: String, title: String, value: String, status: String) -> some View {
         HStack(spacing: 12) {
             Image(systemName: symbol)
                 .font(.system(size: 17))
                 .foregroundStyle(Color(red: 0.16, green: 0.55, blue: 0.36))
                 .frame(width: 30)
-            Text(title).font(.headline)
+            VStack(alignment: .leading, spacing: 3) {
+                Text(title).font(.headline)
+                Text(value).font(.callout).foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
             Spacer()
+            Text(status).font(.caption).foregroundStyle(.secondary)
         }
         .padding(.horizontal, 14).padding(.vertical, 11)
     }
 
-    static func colour(for level: UsbFindingLevel) -> Color {
-        switch level {
-        case .ok: return .green
-        case .info: return .secondary
-        case .warn: return .orange
-        case .error: return .red
+    // MARK: - Detected values
+
+    private var adapterText: String {
+        guard let diagnosis = usb.diagnosis else { return usb.lastError ?? "Reading the USB bus…" }
+        guard let bridge = diagnosis.devices.first(where: { $0.classification != nil }) else {
+            return "No USB-serial adapter attached"
+        }
+        let profile = bridge.classification!.profile
+        return "\(bridge.device.label) — \(profile.chip)"
+    }
+
+    private var adapterStatus: String {
+        guard let diagnosis = usb.diagnosis else { return "" }
+        return diagnosis.devices.contains { $0.classification != nil } ? "Detected" : "Missing"
+    }
+
+    private var portText: String {
+        guard let diagnosis = usb.diagnosis else { return "—" }
+        guard let path = diagnosis.recommended else { return "No serial port available" }
+        let driver = diagnosis.candidates.first { $0.path == path }?.driver ?? ""
+        return driver.isEmpty ? path : "\(path)  (\(driver))"
+    }
+
+    private var portStatus: String {
+        guard let diagnosis = usb.diagnosis, let path = diagnosis.recommended else { return "" }
+        if diagnosis.pinned == path { return "Pinned" }
+        let openable = diagnosis.candidates.first { $0.path == path }?.writable ?? true
+        return openable ? "Auto-selected" : "Root-only"
+    }
+
+    private var linkSymbol: String {
+        model.phase == .connected ? "bolt.horizontal.circle.fill" : "bolt.horizontal.circle"
+    }
+
+    private var linkText: String {
+        switch model.phase {
+        case .down: return "Not connected — click Connect, then PC Link on the Jornada"
+        case .waitingForDevice: return "Waiting for the Jornada to dial in (PC Link)"
+        case .pppUp: return "Serial link up — waiting for ActiveSync"
+        case .connected: return "Connected to \(model.device?.name ?? "the device")"
         }
     }
 
-    static func symbol(for level: UsbFindingLevel) -> String {
-        switch level {
-        case .ok: return "checkmark.circle.fill"
-        case .info: return "info.circle"
-        case .warn: return "exclamationmark.triangle.fill"
-        case .error: return "xmark.octagon.fill"
-        }
-    }
-
-    static func symbol(for role: UsbRole?) -> String {
-        switch role {
-        case .serialBridge: return "cable.connector.horizontal"
-        case .dockBridge: return "dock.rectangle"
-        case .winceUsbSync: return "pc"
-        case nil: return "questionmark.circle"
-        }
-    }
-
-    static func roleLabel(_ role: UsbRole) -> String {
-        switch role {
-        case .serialBridge: return "USB–serial bridge"
-        case .dockBridge: return "dock bridge"
-        case .winceUsbSync: return "Windows CE USB Sync"
+    private var linkStatus: String {
+        switch model.phase {
+        case .down: return "Down"
+        case .waitingForDevice: return "Waiting"
+        case .pppUp: return "PPP up"
+        case .connected: return "Connected"
         }
     }
 }
@@ -262,20 +153,18 @@ struct UsbView: View {
 final class UsbController: ObservableObject {
     @Published var diagnosis: UsbDiagnosis?
     @Published var lastError: String?
-    @Published var selectedModelKey = "" { didSet { refresh() } }
-    @Published var connectedHandheld: HandheldModel?
+    @Published var connectedHandheld: HandheldModel? { didSet { refresh() } }
 
     private var timer: Timer?
     private var busy = false
 
-    var effectiveHandheld: HandheldModel? {
-        selectedModelKey.isEmpty ? connectedHandheld : UsbProfiles.handheld(selectedModelKey)
-    }
-
-    var summary: String {
-        guard let diagnosis else { return lastError ?? "reading the USB bus…" }
-        if let path = diagnosis.recommended { return "serial link port \(path)" }
-        return diagnosis.findings.first { $0.level == .error }?.title ?? "no serial link port"
+    /// The single thing worth telling the user: the doctor's worst finding, and
+    /// only when it is an actual problem.
+    var guidance: UsbFinding? {
+        guard let diagnosis else { return nil }
+        return diagnosis.findings
+            .filter { $0.level >= .warn }
+            .max(by: { $0.level < $1.level })
     }
 
     func startPolling() {
@@ -294,7 +183,7 @@ final class UsbController: ObservableObject {
     func refresh() {
         guard !busy else { return }
         busy = true
-        let handheld = effectiveHandheld
+        let handheld = connectedHandheld
         Task.detached(priority: .utility) {
             let snapshot = UsbRegistry.devices()
             let pinned = UsbDoctor.readPin()
@@ -305,19 +194,5 @@ final class UsbController: ObservableObject {
                 self.busy = false
             }
         }
-    }
-
-    func pin(_ path: String) {
-        do {
-            try UsbDoctor.writePin(path)
-            refresh()
-        } catch {
-            lastError = "\(error)"
-        }
-    }
-
-    func unpin() {
-        UsbDoctor.clearPin()
-        refresh()
     }
 }
