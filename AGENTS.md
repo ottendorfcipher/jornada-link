@@ -29,6 +29,10 @@ python3 -m pytest -q tests/test_rapi.py::test_upload_roundtrip_with_progress
 cd macapp && swift build
 cd macapp && swift build --product SelfTest      # protocol self-test
 cd macapp && ./build.sh                           # build+sign the .app
+
+# USB link table parity (Swift dump vs Python reference)
+cd macapp && swift build --product SelfTest && .build/debug/SelfTest usb-profiles /tmp/usb.json
+python3 tests/check_usb_parity.py /tmp/usb.json
 ```
 
 **Always run `python3 -m pytest -q tests` before proposing changes** and report
@@ -40,6 +44,12 @@ against `tests/fake_device.py`.
 - **No new runtime dependencies.** Python = stdlib; Swift = Apple frameworks.
   This is a deliberate supply-chain property (see `SECURITY.md`), not an
   oversight.
+- **One USB link table, two languages.** `jornada/usb_profiles.py` is the
+  reference; `macapp/Sources/JornadaCore/UsbProfiles.swift` must match row for
+  row (`tests/check_usb_parity.py` against `SelfTest usb-profiles`). The doctor
+  rules in `usb_doctor.py` / `UsbDoctor.swift` are mirrored the same way.
+  Hardware facts and sources live in `docs/usb-link.md` — the SH-3 680/690 has
+  no USB silicon; don't add code that pretends otherwise.
 - **One wire format, two languages.** `jornada/wire.py` and
   `macapp/Sources/JornadaCore/Wire.swift` must agree. A protocol change lands in
   both, plus a test in `tests/` and (if the client changed) the Swift
@@ -64,6 +74,9 @@ Anything crossing a trust boundary must be validated. In particular:
   administrator. The serial device path is validated before interpolation into
   the privileged command — keep that validation, and never widen what the
   privileged helper touches beyond `~/.jornada-link` and system binaries.
+- **The serial pin file** (`~/.jornada-link/serial`, written by `jornada usb pin`
+  and the USB pane) feeds the root `pppd` command; keep the `/dev/cu.*` path
+  validation in `usb_doctor.is_valid_serial_path` / `PppController.isValidSerialPath`.
 - **Never log secrets.** The device password must not appear in logs or state
   files.
 

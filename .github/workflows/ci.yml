@@ -47,3 +47,7 @@ jobs:
           PAR=$(mktemp -d)
           macapp/.build/debug/SelfTest mirror "$PAR"
           python3 tests/check_mirror_parity.py "$PAR"
+      - name: USB link table parity (Swift dump vs Python reference)
+        run: |
+          macapp/.build/debug/SelfTest usb-profiles /tmp/usb-table.json
+          python3 tests/check_usb_parity.py /tmp/usb-table.json

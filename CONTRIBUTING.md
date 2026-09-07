@@ -22,6 +22,7 @@ jornada/        Python library + CLI (stdlib only, no dependencies)
 bin/            jornada (CLI launcher), jornada-ppp (root PPP wrapper)
 macapp/         Swift/SwiftUI macOS app "Jornada Sync" (Apple frameworks only)
 tests/          pytest suite + the in-memory fake device
+docs/           design notes (e.g. usb-link.md: the dock, USB and the 680e)
 ```
 
 See [`AGENTS.md`](AGENTS.md) for a concise build/test/convention reference

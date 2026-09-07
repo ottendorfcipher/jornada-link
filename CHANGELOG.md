@@ -8,6 +8,18 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **USB link module** (`jornada usb`, the app's **USB** pane): a driver table of
+  the USB devices that can carry a link (FTDI/Prolific/Silicon Labs/WCH bridges,
+  CDC-ACM, and the Windows CE USB Sync function devices of the StrongARM
+  Jornadas and Pocket PCs), a handheld capability matrix for the F1822A dock,
+  I/O Registry enumeration that reports every `/dev/cu.*` node with its owning
+  driver and whether the user can open it, and a doctor that ranks the nodes,
+  pins one, and explains the findings — including why the dock's USB-B jack is
+  inert for the SH-3 680/680e/690/690e. `Connect` and `bin/jornada-ppp` now use
+  the doctor's pick (pin file still wins). Same table in Python and Swift, with a
+  CI parity check. Research, sources and the dock-bridge retrofit that lets a
+  680e use the dock's USB cable: `docs/usb-link.md`.
+
 - **`jornada rm -r`**: recursively delete a device directory and its contents
   (depth-first: files, then directories leaf-up), collecting per-entry errors;
   refuses the device root as a guardrail. Enables cleanup of restored/test trees

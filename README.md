@@ -32,8 +32,9 @@ should work; reports welcome.
 
 ## Requirements
 
-- A Mac (macOS 15+) with an FTDI USB-serial adapter and the appropriate HP
-  serial sync cable.
+- A Mac (macOS 15+) with a USB-serial adapter (FTDI needs no driver; Prolific,
+  Silicon Labs and WCH chips are recognised too) and the HP serial sync cable
+  or the dock's DB-9 port.
 - Python 3.9+ for the CLI (uses only the standard library).
 - Xcode 16 / Swift 6 toolchain to build the app (optional).
 - Administrator rights are needed **only** to start `pppd` (the PPP link).
@@ -102,7 +103,21 @@ cd jornada-link
 | *(automatic)* | Every `put`/`install`/app upload is also archived on the Mac — see below |
 | `install CAB` | Copy a `.cab` and launch the device installer (`wceload`) |
 | `probe DEVICE [BAUD] [SECONDS]` | Sniff the serial line (no root) |
+| `usb [doctor\|list\|pick\|pin PATH\|unpin\|profiles]` | USB doctor: which adapter carries the link, what the dock's USB jack can do, pin a port |
 | `ppplog [FILE]` | Decode a `pppd` record file into readable PPP frames |
+
+## USB, the dock, and the 680e
+
+The HP F1822A dock has a DB-9 and a USB-B jack, but the dock is passive and the
+SH-3 Jornada 680/680e/690/690e has **no USB silicon**, so for those models the
+USB jack carries nothing — the link runs over the DB-9 (or the sync cable)
+through a USB-serial adapter. The StrongARM 720/728 do enumerate on it, as a
+Windows CE USB Sync device macOS has no driver for. `jornada usb` (and the
+app's **USB** pane) identifies every adapter and Windows CE device on the bus,
+picks the best `/dev/cu.*` node (Apple's driver over a vendor extension, a node
+you can actually open, a dock-built-in bridge first), explains what it sees,
+and pins a port. Background, sources, pinout notes, and the dock-bridge retrofit
+that lets a 680e come up the dock's USB cable: [`docs/usb-link.md`](docs/usb-link.md).
 
 ## The macOS app
 

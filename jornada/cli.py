@@ -459,6 +459,9 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--gateway-port", type=int, default=None, help=argparse.SUPPRESS)
     p.set_defaults(func=cmd_gpib)
 
+    from .usb_cli import add_parser as add_usb_parser
+    add_usb_parser(sub)
+
     p = sub.add_parser("probe", help="sniff the serial line (no root needed)")
     p.add_argument("device")
     p.add_argument("baud", nargs="?", type=int, default=19200)

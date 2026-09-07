@@ -9,7 +9,7 @@ import JornadaCore
 let arguments = CommandLine.arguments
 guard arguments.count >= 3 else {
     FileHandle.standardError.write(
-        Data("usage: SelfTest rapi <port> | dccm <port> | gpib <port> | mirror <dir> | runner <n>\n".utf8))
+        Data("usage: SelfTest rapi <port> | dccm <port> | gpib <port> | mirror <dir> | runner <n> | usb-profiles <file> | usb <n>\n".utf8))
     exit(2)
 }
 // rapi/dccm need a TCP port; mirror/runner take a path or placeholder instead.
@@ -136,6 +136,43 @@ case "mirror":
     _ = try SendMirror.archive(Data("x".utf8), devicePath: "\\..\\evil.txt",
                                source: nil, rootOverride: rootDir, date: base + 90)
     print("mirror parity tree written to \(rootDir.path)")
+
+case "usb-profiles":
+    // Cross-language parity: dump the USB link table for tests/check_usb_parity.py.
+    let output = URL(fileURLWithPath: CommandLine.arguments[2])
+    try UsbProfiles.tableJSON().write(to: output)
+    print("usb table written to \(output.path) (\(UsbProfiles.drivers.count) drivers, \(UsbProfiles.handhelds.count) handhelds)")
+    check("ftdi classified as serial bridge",
+          UsbProfiles.classify(vendorId: 0x0403, productId: 0x6001)?.role == .serialBridge)
+    check("dock marker upgrades a bridge",
+          UsbProfiles.classify(vendorId: 0x0403, productId: 0x6001, product: "Jornada Dock Bridge")?.role == .dockBridge)
+    check("hp usb sync is a wince device",
+          UsbProfiles.classify(vendorId: 0x03F0, productId: 0x2016)?.role == .winceUsbSync)
+    check("cdc-acm by interface", UsbProfiles.classify(vendorId: 0x2341, productId: 1, interfaceClasses: [(2, 2)])?.profile.key == "usb-cdc-acm")
+    check("sh3 family from dccm hardware", UsbProfiles.identifyHandheld(hardware: "SH3", name: "Pocket")?.key == "sh3-hpc-pro-family")
+    check("model number from name", UsbProfiles.identifyHandheld(hardware: "SH3", name: "Jornada680")?.key == "jornada-680")
+    let twoNodes = UsbDevice(vendorId: 0x0403, productId: 0x6001, vendor: "FTDI", product: "FT232R USB UART", serial: "AB",
+                             locationId: 1, deviceClass: 0, interfaces: [], serialNodes: [
+                                UsbSerialNode(path: "/dev/cu.usbserial-AB", driver: "com.ftdi.vcp.dext", writable: false),
+                                UsbSerialNode(path: "/dev/cu.usbserial-3", driver: "com.apple.DriverKit-AppleUSBFTDI", writable: true)])
+    let diagnosis = UsbDoctor.diagnose([twoNodes], pinned: nil, handheld: UsbProfiles.handheld("jornada-680e"))
+    check("doctor prefers the apple node", diagnosis.recommended == "/dev/cu.usbserial-3")
+    check("doctor explains the inert dock jack", diagnosis.findings.contains { $0.title.contains("inert") })
+    check("doctor worst level is warn", diagnosis.worstLevel == .warn)
+    check("pinned port wins", UsbDoctor.recommendedSerialPath([twoNodes], pinned: "/dev/cu.usbserial-AB") == "/dev/cu.usbserial-AB")
+    check("no adapter is an error", UsbDoctor.diagnose([]).worstLevel == .error)
+
+case "usb":
+    // Live listing of this Mac's USB bus (manual check; needs no hardware to run).
+    let diagnosis = UsbDoctor.diagnose(UsbRegistry.devices(), pinned: UsbDoctor.readPin(), handheld: nil)
+    for item in diagnosis.devices {
+        print("\(item.device.vidPid)  \(item.device.label)  \(item.classification?.profile.name ?? "-")  \(item.role?.rawValue ?? "")")
+        for node in item.device.serialNodes {
+            print("    \(node.path)  \(node.driver)  \(node.writable ? "openable" : "not openable")")
+        }
+    }
+    for finding in diagnosis.findings { print("\(finding.level.rawValue.uppercased())  \(finding.title)") }
+    print("recommended: \(diagnosis.recommended ?? "none")")
 
 case "runner":
     let scratch = FileManager.default.temporaryDirectory

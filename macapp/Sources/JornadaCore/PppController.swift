@@ -16,12 +16,15 @@ public enum PppController {
 
     public enum ControlError: Error, CustomStringConvertible {
         case noSerialDevice
+        case invalidSerialPath(String)
         case authorizationFailed(String)
 
         public var description: String {
             switch self {
             case .noSerialDevice:
                 return "no USB serial adapter found (/dev/cu.usbserial-*)"
+            case .invalidSerialPath(let path):
+                return "not a plain /dev/cu.* serial node: \(path)"
             case .authorizationFailed(let output):
                 return output.isEmpty ? "administrator authorization was cancelled" : output
             }
@@ -76,18 +79,20 @@ public enum PppController {
     /// A serial path is only accepted if it is a plain /dev/cu.* node with no
     /// shell-hostile characters — it is interpolated into a root command, and
     /// the pin file below is user-writable (OWASP A05, defense in depth).
-    static func isValidSerialPath(_ path: String) -> Bool {
+    public static func isValidSerialPath(_ path: String) -> Bool {
         guard path.hasPrefix("/dev/cu.") else { return false }
         let allowed = CharacterSet(charactersIn:
             "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789/._-")
         return path.unicodeScalars.allSatisfy { allowed.contains($0) }
     }
 
+    /// The serial node the link opens: the pinned one when it exists, else the
+    /// USB doctor's pick (a node this user can open, owned by Apple's driver when
+    /// one adapter exposes two), else the first /dev/cu.usbserial-* node.
     public static func serialDevice() -> String? {
-        let pinned = stateDirectory().appendingPathComponent("serial")
-        if let text = try? String(contentsOf: pinned, encoding: .utf8) {
-            let path = text.trimmingCharacters(in: .whitespacesAndNewlines)
-            if isValidSerialPath(path), FileManager.default.fileExists(atPath: path) { return path }
+        if let pinned = UsbDoctor.readPin(), FileManager.default.fileExists(atPath: pinned) { return pinned }
+        if let chosen = UsbDoctor.recommendedSerialPath(UsbRegistry.devices()), isValidSerialPath(chosen) {
+            return chosen
         }
         let nodes = (try? FileManager.default.contentsOfDirectory(atPath: "/dev")) ?? []
         return nodes.filter { $0.hasPrefix("cu.usbserial-") }.sorted().first

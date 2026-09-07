@@ -45,6 +45,12 @@ if [ -z "$DEVICE" ] && [ -r "$USER_HOME/.jornada-link/serial" ]; then
   DEVICE=$(head -n 1 "$USER_HOME/.jornada-link/serial")
 fi
 if [ -z "$DEVICE" ]; then
+  # Ask the USB doctor (jornada usb pick) for the best attached adapter: it
+  # prefers a node this user can open and, when one adapter exposes two
+  # nodes, the one owned by the built-in Apple driver.
+  DEVICE=$(sudo -u "$RUN_AS" env HOME="$USER_HOME" "$HERE/bin/jornada" usb pick 2>/dev/null || true)
+fi
+if [ -z "$DEVICE" ]; then
   DEVICE=$(ls /dev/cu.usbserial-* 2>/dev/null | head -n 1 || true)
 fi
 if [ -z "$DEVICE" ] || [ ! -c "$DEVICE" ]; then

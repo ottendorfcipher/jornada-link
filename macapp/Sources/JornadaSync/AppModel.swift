@@ -8,6 +8,7 @@ final class AppModel: ObservableObject {
         case overview = "Overview"
         case files = "Files"
         case transfers = "Transfers"
+        case usb = "USB"
         case gpib = "GPIB"
         case logs = "Log"
         var id: String { rawValue }
@@ -16,6 +17,7 @@ final class AppModel: ObservableObject {
             case .overview: return "arrow.triangle.2.circlepath"
             case .files: return "folder"
             case .transfers: return "arrow.up.arrow.down.circle"
+            case .usb: return "cable.connector"
             case .gpib: return "waveform.path"
             case .logs: return "text.alignleft"
             }
