@@ -1,0 +1,5 @@
+# Reviewed 2026-10-25: not secrets.
+# test fixture value (tests/test_usb_profiles.py)
+aa92c02c0b0d5885f8ce4726fb53a86e11ca230f:tests/test_usb_profiles.py:generic-api-key:62
+# test fixture value (tests/test_usb_doctor.py)
+aa92c02c0b0d5885f8ce4726fb53a86e11ca230f:tests/test_usb_doctor.py:generic-api-key:125

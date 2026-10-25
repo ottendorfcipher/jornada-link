@@ -1,0 +1,46 @@
+name: security
+
+# Known-vulnerability scan (osv-scanner) and secret scan (gitleaks).
+# Runs on every push and pull request, and weekly so advisories published
+# after the last commit still fail the job.
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    - cron: "7 6 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  osv-scanner:
+    name: osv-scanner (known vulnerabilities)
+    uses: google/osv-scanner-action/.github/workflows/osv-scanner-reusable.yml@b1d267aea5211fa648d9d442fa64b90dbdcbdd36 # v2.7.0
+    with:
+      scan-args: |-
+        -r
+        --allow-no-lockfiles
+        ./
+      upload-sarif: true
+    permissions:
+      actions: read
+      contents: read
+      security-events: write
+
+  gitleaks:
+    name: gitleaks (secrets)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read   # the action lists a pull request's commits
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: gitleaks/gitleaks-action@e0c47f4f8be36e29cdc102c57e68cb5cbf0e8d1e # v3.0.0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITLEAKS_ENABLE_COMMENTS: "false"
