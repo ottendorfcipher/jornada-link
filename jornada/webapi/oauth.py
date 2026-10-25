@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import base64
 import hashlib
+import html
 import secrets
 import threading
 import time
@@ -105,24 +106,34 @@ class _RedirectHandler(BaseHTTPRequestHandler):
     capture: _Capture
 
     def do_GET(self) -> None:  # noqa: N802 (http.server API)
-        query = urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query)
+        parts = urllib.parse.urlsplit(self.path)
+        query = urllib.parse.parse_qs(parts.query)
         capture = self.capture
-        if query.get("state", [None])[0] != capture.state:
-            capture.error = "state mismatch (possible cross-site request); try again"
-        elif "error" in query:
-            capture.error = query.get("error_description", query["error"])[0]
+        # Anything but the provider's redirect (a favicon request, a probe from another
+        # page) is answered without touching the capture.
+        if parts.path != "/" or query.get("state", [None])[0] != capture.state:
+            self._respond(404, "Not found.")
+            return
+        if capture.done.is_set():
+            self._respond(200, "Sign-in already completed; you can close this window.")
+            return
+        if "error" in query:
+            capture.error = html.escape(query.get("error_description", query["error"])[0][:300])
         else:
             capture.code = query.get("code", [None])[0]
             if capture.code is None:
                 capture.error = "no authorization code in the redirect"
         message = "You can close this window." if capture.code else f"Sign-in failed: {capture.error}"
+        self._respond(200, message)
+        capture.done.set()
+
+    def _respond(self, status: int, message: str) -> None:
         body = f"<html><body><h2>Jornada Sync</h2><p>{message}</p></body></html>".encode("utf-8")
-        self.send_response(200)
+        self.send_response(status)
         self.send_header("Content-Type", "text/html; charset=utf-8")
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
         self.wfile.write(body)
-        capture.done.set()
 
     def log_message(self, *_args: Any) -> None:
         return

@@ -38,6 +38,8 @@ def page_name_to_filename(name: str) -> str:
     if not cleaned:
         raise ValueError("a Logseq page needs a title")
     encoded = "".join(_encode_char(char) for char in cleaned)
+    if encoded.startswith("."):
+        encoded = "%2E" + encoded[1:]   # never a hidden dot-file (they would vanish from listings)
     return encoded.replace("/", NAMESPACE_SEPARATOR) + _EXTENSION
 
 

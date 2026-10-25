@@ -74,7 +74,8 @@ class DeviceFolderStore:
             try:
                 record = self._codec.decode(entry.name, data, entry.mtime)
             except (ValueError, UnicodeError) as exc:
-                self._log(f"skipping {entry.name}: {exc}")
+                self._log(f"{entry.name} cannot be read ({exc}); it is left alone")
+                items.append(Item(id=entry.name, record=None, problem=str(exc)))
                 continue
             items.append(Item(id=entry.name, record=record, version=str(entry.mtime or "")))
         return tuple(items)

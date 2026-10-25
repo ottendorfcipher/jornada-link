@@ -44,6 +44,12 @@ jobs:
           macapp/.build/debug/SelfTest rapi "$(cat /tmp/port)"
       - name: CEDB record codec self-test (Swift pack/unpack vs librapi2 layout)
         run: macapp/.build/debug/SelfTest cedb x
+      - name: PIM codecs, device store and sync engine self-test (Swift vs Python fake device + CPython fingerprints)
+        run: |
+          python3 tests/serve_fake.py 60 > /tmp/pim-port &
+          sleep 3
+          macapp/.build/debug/SelfTest pim "$(cat /tmp/pim-port)"
+          macapp/.build/debug/SelfTest engine x
       - name: Send-mirror format parity (Swift writer vs Python validator)
         run: |
           PAR=$(mktemp -d)

@@ -21,7 +21,11 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   preference, one-way modes and dry runs; JSON snapshots of a device database
   before its first write. Account settings under `~/.jornada-link/sync/`,
   secrets in 0600 files, OAuth with the user's own client registration.
-  See `docs/sync.md`.
+  Safety rules: records a store cannot read are left alone on both sides
+  (never treated as deletions), kept deletions stay linked, recurring
+  appointments are never rewritten, remote deletions go to a trash where the
+  service has one, and the device database is snapshotted before its first
+  write. See `docs/sync.md`.
 
 - **Object-store databases** (`jornada db ls|dump|snapshot|restore`): the RAPI
   database calls (`CeFindAllDatabases`, `CeOpenDatabase`, `CeCreateDatabase`,

@@ -88,7 +88,11 @@ def test_deletions_propagate_or_unlink():
     assert local.records == {} and remote.records == {} and new_state.links == ()
     kept = plan(items(MemoryStore({"1": record})), items(MemoryStore({"r2": appt("B")})), state,
                 Options(propagate_deletes=False))
-    assert sorted(a.kind for a in kept.actions) == ["unlink", "unlink"]
+    assert sorted(a.kind for a in kept.actions) == ["skip", "skip"]
+    kept_state, _ = apply(kept, MemoryStore({"1": record}), MemoryStore({"r2": appt("B")}), state)
+    assert kept_state.links == state.links   # the survivor stays linked, so it is never recreated
+    again = plan((Item("1", record),), (Item("r2", appt("B")),), kept_state, Options(propagate_deletes=False))
+    assert [a.kind for a in again.actions] == ["skip", "skip"]
     gone = plan((), (), state)
     assert [a.kind for a in gone.actions] == ["unlink", "unlink"]
 
@@ -111,6 +115,22 @@ def test_apply_continues_after_errors_and_reports_them():
     assert result.counts.get("create_remote") == 1 and len(result.errors) == 2
     assert all("refused" in e for e in result.errors)
     assert len(state.links) == 1
+
+
+def test_unreadable_and_read_only_items_are_left_alone():
+    broken = Item("1", None, problem="bad FILETIME")
+    state = SyncState((Link("1", "r1", "old", "old"), Link("2", "r2", appt("B").fingerprint(), appt("B").fingerprint())))
+    p = plan((broken, Item("2", appt("B"), read_only=True)), (Item("r2", appt("B", notes="edited")),), state)
+    kinds = sorted((a.kind, a.reason) for a in p.actions)
+    assert kinds[0] == ("skip", "changed remotely; device record is read-only")
+    assert kinds[1][0] == "skip" and "unreadable" in kinds[1][1]
+    fresh = plan((Item("9", None, problem="x"),), (Item("r9", None, problem="y"),), SyncState())
+    assert [a.kind for a in fresh.actions] == ["skip", "skip"] and not fresh.writes_device
+    only_second = SyncState((state.links[1],))
+    both_changed = plan((Item("2", appt("B", notes="device"), read_only=True),), (Item("r2", appt("B", notes="cloud")),), only_second)
+    assert [a.kind for a in both_changed.actions] == ["update_remote"]
+    assert plan((Item("2", appt("B", notes="device"), read_only=True),), (Item("r2", appt("B", notes="cloud")),), only_second,
+                Options(direction=Direction.TO_DEVICE)).actions[0].kind == "conflict"
 
 
 def test_refresh_hashes_records_what_each_side_stored():

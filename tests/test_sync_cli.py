@@ -125,3 +125,17 @@ def test_registry_skips_missing_packages_but_raises_on_broken_ones(tmp_path, mon
     with pytest.raises(AccountError):
         fake_sync_module.MODULE.backend("nope")
     assert fake_sync_module.MODULE.backend("memory").missing_settings(Account("a", "memtasks", "memory"), {}) == ("label",)
+
+
+def test_store_errors_are_reported_not_raised(env, capsys, monkeypatch):
+    from jornada.sync.base import StoreError
+    from tests.memory_store import MemoryStore
+    assert env("account", "add", "home", "--module", "memtasks", "--backend", "memory", "--set", "label=x") == 0
+
+    class Broken(MemoryStore):
+        def list(self):
+            raise StoreError("Bear is not running")
+
+    fake_sync_module.STORES["home"] = Broken()
+    assert env("run", "home") == 1
+    assert "error: Bear is not running" in capsys.readouterr().err

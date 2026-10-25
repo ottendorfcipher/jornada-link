@@ -100,12 +100,14 @@ class Result:
 
 
 def _label(record: Any) -> str:
+    if record is None:
+        return "(unreadable record)"
+    if hasattr(record, "display_name"):
+        return record.display_name()[:60] or "(unnamed)"
     for attr in ("summary", "title", "name"):
         value = getattr(record, attr, None)
         if isinstance(value, str) and value.strip():
             return value.strip()[:60]
-    if hasattr(record, "display_name"):
-        return record.display_name()[:60]
     return "(record)"
 
 
@@ -123,7 +125,12 @@ def plan(local: Sequence[Item], remote: Sequence[Item], state: SyncState,
         actions.extend(_plan_link(link, local_by_id.get(link.local_id), remote_by_id.get(link.remote_id), options))
     new_local = [item for item in local if item.id not in linked_local]
     new_remote = [item for item in remote if item.id not in linked_remote]
-    actions.extend(_pair_new(new_local, new_remote, options))
+    for item in new_local + new_remote:
+        if item.unreadable:
+            actions.append(Action("skip", item.id if item in new_local else None,
+                                  item.id if item in new_remote else None, None, f"unreadable: {item.problem}"))
+    actions.extend(_pair_new([i for i in new_local if not i.unreadable],
+                             [i for i in new_remote if not i.unreadable], options))
     return Plan(tuple(actions))
 
 
@@ -131,13 +138,22 @@ def _plan_link(link: Link, local: Optional[Item], remote: Optional[Item], option
     if local is None and remote is None:
         return [Action("unlink", link.local_id, link.remote_id, reason="gone on both sides")]
     if remote is None:
-        if options.propagate_deletes and options.writes_local:
+        if local.unreadable:
+            return [Action("skip", link.local_id, link.remote_id, None, f"unreadable on the device: {local.problem}")]
+        if options.propagate_deletes and options.writes_local and not local.read_only:
             return [Action("delete_local", link.local_id, link.remote_id, local.record, "deleted remotely")]
-        return [Action("unlink", link.local_id, link.remote_id, local.record, "deleted remotely; device copy kept")]
+        # The link is kept on purpose: a kept copy must not read as "new" on the next run.
+        return [Action("skip", link.local_id, link.remote_id, local.record, "deleted remotely; device copy kept")]
     if local is None:
+        if remote.unreadable:
+            return [Action("skip", link.local_id, link.remote_id, None, f"unreadable remotely: {remote.problem}")]
         if options.propagate_deletes and options.writes_remote:
             return [Action("delete_remote", link.local_id, link.remote_id, remote.record, "deleted on the device")]
-        return [Action("unlink", link.local_id, link.remote_id, remote.record, "deleted on the device; remote copy kept")]
+        return [Action("skip", link.local_id, link.remote_id, remote.record, "deleted on the device; remote copy kept")]
+    if local.unreadable or remote.unreadable:
+        problem = local.problem if local.unreadable else remote.problem
+        where = "on the device" if local.unreadable else "remotely"
+        return [Action("skip", local.id, remote.id, None, f"unreadable {where}: {problem}")]
     local_changed = local.fingerprint != link.local_hash
     remote_changed = remote.fingerprint != link.remote_hash
     if not local_changed and not remote_changed:
@@ -158,6 +174,8 @@ def _push(local: Item, remote: Item, options: Options, reason: str) -> Action:
 
 
 def _pull(local: Item, remote: Item, options: Options, reason: str) -> Action:
+    if local.read_only:
+        return Action("skip", local.id, remote.id, remote.record, reason + "; device record is read-only")
     if options.writes_local:
         return Action("update_local", local.id, remote.id, remote.record, reason)
     return Action("skip", local.id, remote.id, remote.record, reason + "; not writing device")
@@ -167,6 +185,9 @@ def _resolve_conflict(local: Item, remote: Item, options: Options) -> Action:
     """Both sides changed: in one-way mode the source side wins, otherwise ``prefer`` decides."""
     pull = Action("update_local", local.id, remote.id, remote.record, "changed on both sides; remote wins")
     push = Action("update_remote", local.id, remote.id, local.record, "changed on both sides; device wins")
+    if local.read_only:
+        return push if options.writes_remote else Action("conflict", local.id, remote.id, local.record,
+                                                          "changed on both sides; device record is read-only")
     if not options.writes_local:
         return push if options.writes_remote else Action("conflict", local.id, remote.id, local.record, "changed on both sides; left as is")
     if not options.writes_remote:

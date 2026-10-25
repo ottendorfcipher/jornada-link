@@ -117,9 +117,20 @@ def test_models_normalize_and_match():
     assert Appointment.from_dict(a.to_dict()) == a
     c = Contact(full_name="", first_name="Ada", last_name="Lovelace", emails=("A@x.org",))
     assert c.display_name() == "Ada Lovelace" and c.match_key() == "contact|ada lovelace|a@x.org"
+    filed_last_first = Contact(full_name="Lovelace, Ada", first_name="Ada", last_name="Lovelace", emails=("a@x.org",))
+    assert filed_last_first.match_key() == c.match_key()   # a device "Last, First" full name still pairs
+    assert Contact(full_name="ACME Ltd").match_key() == "contact|acme ltd|"
     assert Contact(company="ACME").display_name() == "ACME" and Contact(emails=("e@x",)).display_name() == "e@x"
     assert Task("x", priority="bogus").normalized().priority == "normal"
     note = Note("T", "b\r\n", modified=datetime(2026, 1, 1))
     assert note.normalized().body == "b" and Note.from_dict(note.to_dict()) == note
     assert note.fingerprint() == Note("T", "b").fingerprint()
     assert Task.from_dict({"summary": "s", "due": "2026-01-01", "categories": ["a"], "bogus": 1}) == Task("s", due=date(2026, 1, 1), categories=("a",))
+
+
+def test_note_fingerprint_ignores_folder_but_match_key_uses_title():
+    device = Note("Ideas", "body")
+    remote = Note("Ideas", "body", folder="Jornada", uid="x1")
+    assert device.fingerprint() == remote.fingerprint()
+    assert device.match_key() == remote.match_key() == "note|ideas"
+    assert Note("Ideas", "other").fingerprint() != device.fingerprint()
