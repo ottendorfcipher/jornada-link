@@ -1,8 +1,8 @@
 name: security
 
-# Known-vulnerability scan (osv-scanner) and secret scan (gitleaks).
-# Runs on every push and pull request, and weekly so advisories published
-# after the last commit still fail the job.
+# Secret scan (gitleaks). Runs on every push and pull request, and weekly
+# over the full history. There is no vulnerability scan because this repo
+# has no dependency lockfiles: add an osv-scanner job if it gains one.
 on:
   push:
     branches: [main]
@@ -15,20 +15,6 @@ permissions:
   contents: read
 
 jobs:
-  osv-scanner:
-    name: osv-scanner (known vulnerabilities)
-    uses: google/osv-scanner-action/.github/workflows/osv-scanner-reusable.yml@b1d267aea5211fa648d9d442fa64b90dbdcbdd36 # v2.7.0
-    with:
-      scan-args: |-
-        -r
-        --allow-no-lockfiles
-        ./
-      upload-sarif: true
-    permissions:
-      actions: read
-      contents: read
-      security-events: write
-
   gitleaks:
     name: gitleaks (secrets)
     runs-on: ubuntu-latest
