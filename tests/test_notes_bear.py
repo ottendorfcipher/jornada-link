@@ -46,8 +46,9 @@ def database(tmp_path):
 
 def test_list_filters_trashed_and_archived_and_strips_the_heading(database):
     lines = []
-    items = BearStore(database, log=lines.append).list()
-    assert [item.id for item in items] == ["DDD-4", "AAA-1"]        # by modification date
+    listed = BearStore(database, log=lines.append).list()
+    assert [(item.id, item.unreadable) for item in listed] == [("DDD-4", False), ("AAA-1", False), ("EEE-5", True)]
+    items = [item for item in listed if not item.unreadable]        # by modification date
     shopping = items[1]
     assert shopping.record == Note("Shopping", "Milk\nEggs #jornada", modified=core_data_to_wall_clock(800000000.0),
                                    uid="AAA-1")
@@ -60,9 +61,9 @@ def test_list_filters_trashed_and_archived_and_strips_the_heading(database):
 
 
 def test_tag_filter(database):
-    assert [item.id for item in BearStore(database, tag="jornada").list()] == ["AAA-1"]
-    assert [item.id for item in BearStore(database, tag="#Jornada").list()] == ["AAA-1"]
-    assert [item.id for item in BearStore(database, tag="work").list()] == []
+    assert [i.id for i in BearStore(database, tag="jornada").list() if not i.unreadable] == ["AAA-1"]
+    assert [i.id for i in BearStore(database, tag="#Jornada").list() if not i.unreadable] == ["AAA-1"]
+    assert [i.id for i in BearStore(database, tag="work").list() if not i.unreadable] == []
     assert has_tag("a #tag, b", "tag") and has_tag("#tag", "tag") and has_tag("x", "")
     assert not has_tag("x #tag/child", "tag") and not has_tag("a#tag", "tag") and not has_tag("#tagged", "tag")
 
@@ -156,7 +157,7 @@ def test_backend_build_and_settings(database, tmp_path):
                            extra={"bear_opener": opened.append, "bear_sleep": lambda _s: None})
     account = Account("b", "notes", "bear", (("database", str(database)), ("tag", "jornada")))
     store = bear.build(account, {}, context)
-    assert [item.id for item in store.list()] == ["AAA-1"]
+    assert [item.id for item in store.list() if not item.unreadable] == ["AAA-1"]
     store.delete("AAA-1")
     assert opened == [trash_url("AAA-1")]
     with pytest.raises(AccountError):

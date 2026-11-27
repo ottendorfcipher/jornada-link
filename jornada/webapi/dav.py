@@ -259,6 +259,8 @@ class DavClient:
             target = _redirect_target(method.upper(), response, url)
             if target is None:
                 return dataclasses.replace(response, url=url)
+            if _origin_of(target) != _origin_of(url):
+                sent = tuple((k, v) for k, v in sent if k.lower() != "authorization")
             url = target
         raise DavError(f"{method} {safe_url(url)}: too many redirects", response.status)
 
@@ -334,6 +336,11 @@ def _authorization(username: Optional[str], password: Optional[str], token: Opti
         raw = f"{username}:{password or ''}".encode("utf-8")
         return "Basic " + base64.b64encode(raw).decode("ascii")
     return None
+
+
+def _origin_of(url: str) -> Tuple[str, str]:
+    parts = urllib.parse.urlsplit(url)
+    return parts.scheme.lower(), parts.netloc.lower()
 
 
 def _redirect_target(method: str, response: Response, url: str) -> Optional[str]:

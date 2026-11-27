@@ -1,4 +1,5 @@
 import threading
+import urllib.error
 import urllib.request
 
 import pytest
@@ -51,7 +52,22 @@ def test_exchange_refresh_and_ensure_fresh():
 
 
 def _hit(port: int, query: str) -> None:
-    urllib.request.urlopen(f"http://127.0.0.1:{port}/?{query}", timeout=5).read()
+    try:
+        urllib.request.urlopen(f"http://127.0.0.1:{port}/?{query}", timeout=5).read()
+    except urllib.error.HTTPError:
+        pass   # a 404 for a stray request is the expected answer
+
+
+def test_listener_keeps_the_captured_code_when_a_stray_request_follows():
+    server, capture = start_listener("state9")
+    port = server.server_address[1]
+    _hit(port, "state=state9&code=first")
+    _hit(port, "state=wrong&code=second")
+    try:
+        urllib.request.urlopen(f"http://127.0.0.1:{port}/favicon.ico", timeout=5).read()
+    except urllib.error.HTTPError as exc:
+        assert exc.code == 404
+    assert wait_for_code(server, capture, timeout=5) == "first"
 
 
 def test_listener_captures_code_and_rejects_bad_state():
@@ -60,9 +76,11 @@ def test_listener_captures_code_and_rejects_bad_state():
     threading.Thread(target=_hit, args=(port, "state=state1&code=abc"), daemon=True).start()
     assert wait_for_code(server, capture, timeout=5) == "abc"
     server, capture = start_listener("state2")
-    threading.Thread(target=_hit, args=(server.server_address[1], "state=wrong&code=abc"), daemon=True).start()
+    port2 = server.server_address[1]
+    threading.Thread(target=_hit, args=(port2, "state=wrong&code=abc"), daemon=True).start()
     with pytest.raises(OAuthError):
-        wait_for_code(server, capture, timeout=5)
+        wait_for_code(server, capture, timeout=0.5)   # a stray request is ignored, not accepted
+    assert capture.code is None
     server, capture = start_listener("state3")
     threading.Thread(target=_hit, args=(server.server_address[1], "state=state3&error=access_denied"), daemon=True).start()
     with pytest.raises(OAuthError):

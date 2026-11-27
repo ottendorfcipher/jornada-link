@@ -11,19 +11,31 @@ class StoreError(RuntimeError):
 
 @dataclass(frozen=True)
 class Item:
-    """One record as a store presents it: opaque id, neutral record, optional version tag."""
+    """One record as a store presents it: opaque id, neutral record, optional version tag.
+
+    A store that finds a record it cannot decode still lists it, with ``record=None``
+    and ``problem`` set: the engine then leaves that record and its counterpart alone
+    instead of reading the absence as a deletion. ``read_only`` marks records the store
+    will refuse to change (recurring device appointments).
+    """
 
     id: str
     record: Any
     version: Optional[str] = None
+    problem: Optional[str] = None
+    read_only: bool = False
+
+    @property
+    def unreadable(self) -> bool:
+        return self.record is None
 
     @property
     def fingerprint(self) -> str:
-        return self.record.fingerprint()
+        return "" if self.record is None else self.record.fingerprint()
 
     @property
     def match_key(self) -> str:
-        return self.record.match_key()
+        return "" if self.record is None else self.record.match_key()
 
 
 class Store(Protocol):

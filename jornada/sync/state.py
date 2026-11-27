@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any, Dict, Optional, Tuple
 
 from ..state import read_state, write_state
+from .base import StoreError
 
 STATE_VERSION = 1
 
@@ -57,9 +58,21 @@ class SyncState:
         return cls(links=links, last_sync=data.get("last_sync"), remote_token=data.get("remote_token"))
 
 
+class StateError(StoreError):
+    """The state file exists but cannot be used; a silent fresh start would re-pair everything."""
+
+
 def load_state(path: Path) -> SyncState:
+    if not path.exists():
+        return SyncState()
     data = read_state(path)
-    return SyncState() if data is None else SyncState.from_dict(data)
+    if data is None:
+        raise StateError(f"the sync state file {path} is unreadable; move it aside to start over "
+                         "(records are then re-paired by content)")
+    try:
+        return SyncState.from_dict(data)
+    except (KeyError, TypeError, ValueError) as exc:
+        raise StateError(f"the sync state file {path} is malformed ({exc}); move it aside to start over") from exc
 
 
 def save_state(path: Path, state: SyncState) -> None:
